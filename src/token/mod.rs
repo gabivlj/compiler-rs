@@ -29,13 +29,20 @@ pub enum TokenType {
     False,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub string: String,
 }
 
 impl Token {
+    pub fn empty() -> Self {
+        Self {
+            token_type: TokenType::EOF,
+            string: String::with_capacity(0),
+        }
+    }
+
     pub fn copy(&self) -> Self {
         Self {
             string: self.string.clone(),
