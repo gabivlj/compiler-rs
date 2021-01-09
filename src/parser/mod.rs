@@ -1,3 +1,5 @@
+mod expressions;
+
 use std::unimplemented;
 
 use crate::ast::node::{Expression, Node, NodeToken, Statement};
@@ -26,7 +28,7 @@ impl<'a> Parser<'a> {
         std::mem::replace(&mut self.peek_token, self.lexer.next_token())
     }
 
-    pub fn parse_program(&mut self) -> Result<Vec<NodeToken<Statement>>, String> {
+    pub fn parse_program(&mut self) -> Result<NodeToken<Statement>, String> {
         let mut statements = Vec::new();
         while self.current_token.token_type != TokenType::EOF {
             let stmt = self.parse_stmt();
@@ -34,18 +36,36 @@ impl<'a> Parser<'a> {
                 statements.push(s);
             } else {
                 // We map to get the type that we want
-                return stmt.map(|_| Vec::new());
+                return stmt.map(|_| NodeToken::new(Statement::Empty, Token::empty()));
             }
             self.next_token();
         }
-        Ok(statements)
+        Ok(NodeToken::new(
+            Statement::Program(statements),
+            Token::empty(),
+        ))
     }
 
     fn parse_stmt(&mut self) -> Result<NodeToken<Statement>, String> {
         match self.current_token.token_type {
             TokenType::Let => self.parse_let_statement(),
-            _ => unimplemented!(),
+            TokenType::Return => self.parse_return_statement(),
+            _ => self.parse_expression_statement(),
         }
+    }
+
+    fn parse_return_statement(&mut self) -> Result<NodeToken<Statement>, String> {
+        let token = self.next_token();
+        while !self.is_current(TokenType::Semicolon) {
+            self.next_token();
+        }
+        Ok(NodeToken::new(
+            Statement::Return(Box::new(NodeToken::new(
+                Expression::Number(1),
+                Token::empty(),
+            ))),
+            token,
+        ))
     }
 
     fn parse_let_statement(&mut self) -> Result<NodeToken<Statement>, String> {
@@ -103,6 +123,8 @@ impl<'a> Parser<'a> {
 }
 
 mod test {
+    use core::panic;
+
     use crate::parser::{Parser, Statement};
     use crate::{ast::node::Expression, lexer::Lexer};
     #[test]
@@ -114,6 +136,11 @@ mod test {
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
         let program = program.expect("program to be parsed correctly");
+        let program = if let Statement::Program(stmts) = program.node {
+            stmts
+        } else {
+            panic!("not a program");
+        };
         if program.len() != 3 {
             panic!("number of statements is {} instead of 3", program.len());
         }
@@ -136,6 +163,40 @@ mod test {
             } else {
                 panic!("not an identifier, got {:?}", identifier_expr);
             }
+        }
+    }
+
+    #[test]
+    fn test_return_stmt() {
+        let input = "return 5;
+        return 10;
+        return 500343;";
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = parser
+            .parse_program()
+            .expect("program to be parsed correctly");
+        let program = if let Statement::Program(stmts) = program.node {
+            stmts
+        } else {
+            panic!("not a program");
+        };
+        if program.len() != 3 {
+            panic!("number of statements is {} instead of 3", program.len());
+        }
+        println!("{:?}", program);
+        // Expected identifiers, later on we will add expected value as pairs
+        let tests = vec!["x", "y", "foobar"];
+        for (i, test) in tests.iter().enumerate() {
+            let stmt = &program[i];
+            if stmt.token.string != "return" {
+                panic!("got: {} instead of return", stmt.token.string);
+            }
+            let return_expr = if let Statement::Return(identifier) = &stmt.node {
+                identifier
+            } else {
+                panic!("not a return statement");
+            };
         }
     }
 }

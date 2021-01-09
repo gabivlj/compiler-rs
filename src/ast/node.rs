@@ -1,5 +1,5 @@
 use crate::token::Token;
-use std::boxed::Box;
+use std::{boxed::Box, unimplemented};
 
 #[derive(Debug, Clone)]
 /// Node represents a AST node. We intend this node to fill 32 bytes in memory maximum everytime
@@ -57,6 +57,8 @@ pub enum Expression {
 
     /// Almost equal to Var, but instead will override the already declared variable
     Assignment(String, Box<NodeToken<Expression>>),
+
+    PrefixOp(String, Box<NodeToken<Expression>>),
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +76,8 @@ pub enum Statement {
     ExpressionStatement(Box<NodeToken<Expression>>),
 
     Program(Vec<NodeToken<Statement>>),
+
+    Empty,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -124,6 +128,79 @@ impl Node {
         match self {
             Node::Expression(expr) => expr,
             Node::Statement(_) => panic!("not an expression"),
+        }
+    }
+}
+
+impl Statement {
+    fn string(&self, token: &Token) -> String {
+        match self {
+            Statement::Empty => String::with_capacity(0),
+            Statement::Program(tokens) => {
+                tokens.iter().fold(String::new(), |acc, x| acc + &x.str())
+            }
+            Statement::Var(identifier, expression) => format!(
+                "{} {} = {};",
+                token.string,
+                identifier.str(),
+                expression.str()
+            ),
+            Statement::ExpressionStatement(expr) => expr.str(),
+            Statement::Return(expr) => format!("{} {};", token.string, expr.str()),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl Expression {
+    pub fn string(&self) -> String {
+        match self {
+            Expression::Id(identifier) => identifier.clone(),
+            Expression::Number(n) => n.to_string(),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+pub trait ToString {
+    fn str(&self) -> String;
+}
+
+impl ToString for NodeToken<Statement> {
+    fn str(&self) -> String {
+        self.node.string(&self.token)
+    }
+}
+
+impl ToString for NodeToken<Expression> {
+    fn str(&self) -> String {
+        self.node.string()
+    }
+}
+
+mod test {
+    use crate::ast::node::{Expression, Node, NodeToken, Statement};
+    use crate::token::{Token, TokenType};
+    #[test]
+    fn check_string() {
+        let program = Statement::Program(vec![NodeToken::new(
+            Statement::Var(
+                NodeToken::new_boxed(
+                    Expression::Id("myVar".to_string()),
+                    Token::new("myVar", TokenType::Ident),
+                ),
+                NodeToken::new_boxed(
+                    Expression::Id("anotherVar".to_string()),
+                    Token::new("anotherVar", TokenType::Ident),
+                ),
+            ),
+            Token::new("let", TokenType::Let),
+        )]);
+        if program.string(&Token::empty()) != "let myVar = anotherVar;" {
+            panic!(
+                "program to string wrong. got={}",
+                program.string(&Token::empty())
+            )
         }
     }
 }
