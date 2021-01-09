@@ -1,6 +1,6 @@
 use std::unimplemented;
 
-use crate::ast::node::{Expression, NodeToken, Statement};
+use crate::ast::node::{Expression, NodeToken, OpType, Statement};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
 
@@ -30,7 +30,22 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self, prec: Precedence) -> Result<NodeToken<Expression>, String> {
-        let left_expr = self.prefix_expression()?;
+        // Get left expression
+        let mut left_expr = self.prefix_expression()?;
+        // Iterate and recursive doing pratt
+        while !self.is_current(TokenType::Semicolon) && prec < self.current_precedence() {
+            // Get possible infix, if there is an error, just return itself (ownership)
+            let possible_infix = self.infix_expression(left_expr);
+            // it's not an infix, stop
+            if possible_infix.is_err() {
+                left_expr = possible_infix
+                    .expect_err("we got an error, time to unwrap the value to get back ownership");
+                return Ok(left_expr);
+            }
+            // check if infix is an error
+            let infix = possible_infix.expect("already checked error")?;
+            left_expr = infix;
+        }
         Ok(left_expr)
     }
 
@@ -44,18 +59,51 @@ impl<'a> Parser<'a> {
                 Expression::Number(
                     self.current_token
                         .string
-                        .parse::<u64>()
+                        .parse::<i64>()
                         .expect("expected a good number from the lexer"),
                 ),
                 self.next_token(),
             )),
-            TokenType::Bang => self.parse_prefix_expression(),
-            TokenType::Minus => self.parse_prefix_expression(),
+            TokenType::Minus | TokenType::Bang | TokenType::Plus => self.parse_prefix_expression(),
             _ => Err(format!(
                 "can't parse unknown prefix: {:?}",
                 self.current_token
             )),
         }
+    }
+
+    fn infix_expression(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<Result<NodeToken<Expression>, String>, NodeToken<Expression>> {
+        match self.current_token.token_type {
+            TokenType::Minus
+            | TokenType::Slash
+            | TokenType::GreaterThan
+            | TokenType::LessThan
+            | TokenType::Plus
+            | TokenType::Asterisk
+            | TokenType::Equal
+            | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
+            _ => Err(left),
+        }
+    }
+
+    fn parse_infix_expression(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        let precedence = self.current_precedence();
+        let token = self.next_token();
+        let right = self.parse_expression(precedence)?;
+        Ok(NodeToken::new(
+            Expression::BinaryOp(
+                Box::new(left),
+                Box::new(right),
+                OpType::from(token.string.as_ref()),
+            ),
+            token,
+        ))
     }
 
     fn parse_prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
@@ -65,24 +113,63 @@ impl<'a> Parser<'a> {
         let expr = NodeToken::new(Expression::PrefixOp(op, Box::new(right)), token);
         Ok(expr)
     }
+
+    fn get_precedence(token: &TokenType) -> Precedence {
+        match token {
+            TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
+            TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
+            TokenType::Plus | TokenType::Minus => Precedence::Sum,
+            TokenType::Asterisk | TokenType::Slash => Precedence::Product,
+            TokenType::LParen => Precedence::Call,
+            _ => Precedence::Lowest,
+        }
+    }
+
+    fn peek_precedence(&self) -> Precedence {
+        Parser::get_precedence(&self.peek_token.token_type)
+    }
+
+    fn current_precedence(&self) -> Precedence {
+        Parser::get_precedence(&self.current_token.token_type)
+    }
 }
 
 mod test {
-    use crate::ast::node::{Expression, NodeToken, Statement};
+
+    #![allow(unused_variables)]
+    #![allow(dead_code)]
+    #![allow(unused_imports)]
+    use crate::ast::node::{Expression, NodeToken, OpType, Statement};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::Token;
 
-    #[test]
-    fn test_id() {
-        let input = "variable";
+    fn get_program(input: &str) -> Vec<NodeToken<Statement>> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
-        let mut program = if let Statement::Program(stmts) = parser.parse_program().unwrap().node {
+        let program = if let Statement::Program(stmts) = parser.parse_program().unwrap().node {
             stmts
         } else {
             panic!("not a program")
         };
+        program
+    }
+
+    fn test_integer(expr: &NodeToken<Expression>, expected: i64) {
+        let value = if let Expression::Number(value) = expr.node {
+            value
+        } else {
+            panic!("not a number");
+        };
+        assert_eq!(&expected.to_string(), &expr.token.string);
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_id() {
+        let input = "variable";
+
+        let mut program = get_program(input);
         assert_eq!(program.len(), 1);
         let stmt =
             if let Statement::ExpressionStatement(variable) = program.pop().expect("len=1").node {
@@ -102,13 +189,7 @@ mod test {
     #[test]
     fn test_int() {
         let input = "5;";
-        let lexer = Lexer::new(input);
-        let mut parser = Parser::new(lexer);
-        let mut program = if let Statement::Program(stmts) = parser.parse_program().unwrap().node {
-            stmts
-        } else {
-            panic!("not a program")
-        };
+        let mut program = get_program(input);
         assert_eq!(program.len(), 1);
         let stmt =
             if let Statement::ExpressionStatement(variable) = program.pop().expect("len=1").node {
@@ -116,28 +197,15 @@ mod test {
             } else {
                 panic!("not an expression statement")
             };
-        let (id, token) = if let Expression::Number(identifier) = stmt.node {
-            (identifier, stmt.token)
-        } else {
-            panic!("not an identifier");
-        };
-        assert_eq!(id, 5);
-        assert_eq!(token.string, "5");
+        test_integer(&stmt, 5);
     }
 
     #[test]
-    fn parse_prefix_expr() {
+    fn test_prefix_expr() {
         let tests = [("!5;", "!", 5), ("-15;", "-", 15)];
         for test in tests.iter() {
             let (input, op, value_test) = test;
-            let lexer = Lexer::new(input);
-            let mut parser = Parser::new(lexer);
-            let mut program =
-                if let Statement::Program(stmts) = parser.parse_program().unwrap().node {
-                    stmts
-                } else {
-                    panic!("not a program")
-                };
+            let mut program = get_program(input);
             assert_eq!(program.len(), 1);
             let stmt = if let Statement::ExpressionStatement(variable) =
                 program.pop().expect("len=1").node
@@ -153,12 +221,94 @@ mod test {
             };
             assert_eq!(&id, op);
             assert_eq!(&token.string, op);
-            let value = if let Expression::Number(value) = expr.node {
-                value
+            test_integer(&expr, *value_test);
+        }
+    }
+
+    #[test]
+    fn test_infix_expressions() {
+        struct InfixTest {
+            input: &'static str,
+            values: (i64, i64),
+            operator: &'static str,
+        }
+        let tests = [
+            InfixTest {
+                input: "5 + 5",
+                values: (5, 5),
+                operator: "+",
+            },
+            InfixTest {
+                input: "5 - 5",
+                values: (5, 5),
+                operator: "-",
+            },
+            InfixTest {
+                input: "5 > 5",
+                values: (5, 5),
+                operator: ">",
+            },
+            InfixTest {
+                input: "5 != 5",
+                values: (5, 5),
+                operator: "!=",
+            },
+            InfixTest {
+                input: "5 < 5",
+                values: (5, 5),
+                operator: "<",
+            },
+            InfixTest {
+                input: "5 == 5",
+                values: (5, 5),
+                operator: "==",
+            },
+        ];
+        for test in tests.iter() {
+            let mut program = get_program(test.input);
+            assert_eq!(program.len(), 1);
+            let stmt = if let Statement::ExpressionStatement(variable) =
+                program.pop().expect("len=1").node
+            {
+                variable
             } else {
-                panic!("not a prefix op");
+                panic!("not an expression statement")
             };
-            assert_eq!(value, *value_test);
+            let (left, right, op) = if let Expression::BinaryOp(left, right, op) = stmt.node {
+                (left, right, op)
+            } else {
+                panic!("not a binary operation")
+            };
+            test_integer(&left, test.values.0);
+            test_integer(&right, test.values.1);
+            assert_eq!(op.to_string(), test.operator);
+        }
+    }
+
+    #[test]
+    fn test_operator_precedence_parsing() {
+        let input = [
+            ("-a * b", "((-a) * b)"),
+            ("!-a", "(!(-a))"),
+            ("a + b + c", "((a + b) + c)"),
+            ("a + b - c", "((a + b) - c)"),
+            ("a * b * c", "((a * b) * c)"),
+            ("a+b*c+d/e-f", "(((a + (b * c)) + (d / e)) - f)"),
+            ("5 > 4 == 3 < 4", "((5 > 4) == (3 < 4))"),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+            (
+                "3 + 4 * 5 == 3 * 1 + 4 * 5",
+                "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            ),
+        ];
+
+        for test in input.iter() {
+            let mut program = get_program(test.0);
+            let str = Statement::Program(program).string(&Token::empty());
+            assert_eq!(&str, test.1);
         }
     }
 }

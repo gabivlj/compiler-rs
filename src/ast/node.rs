@@ -27,7 +27,7 @@ impl<T: Clone> NodeToken<T> {
 #[derive(Debug, Clone)]
 pub enum Expression {
     /// We'll only have u64 values atm
-    Number(u64),
+    Number(i64),
 
     /// Id is an identifier
     /// `let f = 0;` would create an identifier called f
@@ -90,6 +90,8 @@ pub enum OpType {
     Divide,
     And,
     Or,
+    GreaterThan,
+    LessThan,
 }
 
 impl Node {
@@ -133,7 +135,7 @@ impl Node {
 }
 
 impl Statement {
-    fn string(&self, token: &Token) -> String {
+    pub fn string(&self, token: &Token) -> String {
         match self {
             Statement::Empty => String::with_capacity(0),
             Statement::Program(tokens) => {
@@ -157,24 +159,65 @@ impl Expression {
         match self {
             Expression::Id(identifier) => identifier.clone(),
             Expression::Number(n) => n.to_string(),
+            Expression::PrefixOp(op, val) => format!("({}{})", op, val.str()),
+            Expression::BinaryOp(left, right, op) => {
+                format!("({} {} {})", left.str(), op.to_string(), right.str())
+            }
             _ => unimplemented!(),
         }
     }
 }
 
-pub trait ToString {
+pub trait Str {
     fn str(&self) -> String;
 }
 
-impl ToString for NodeToken<Statement> {
+impl Str for NodeToken<Statement> {
     fn str(&self) -> String {
         self.node.string(&self.token)
     }
 }
 
-impl ToString for NodeToken<Expression> {
+impl Str for NodeToken<Expression> {
     fn str(&self) -> String {
         self.node.string()
+    }
+}
+
+use std::string::ToString;
+
+impl ToString for OpType {
+    fn to_string(&self) -> String {
+        match *self {
+            OpType::Add => "+".to_string(),
+            OpType::Substract => "-".to_string(),
+            OpType::Divide => "/".to_string(),
+            OpType::Multiply => "*".to_string(),
+            OpType::And => "&&".to_string(),
+            OpType::Or => "||".to_string(),
+            OpType::Equal => "==".to_string(),
+            OpType::NotEqual => "!=".to_string(),
+            OpType::GreaterThan => ">".to_string(),
+            OpType::LessThan => "<".to_string(),
+        }
+    }
+}
+
+impl From<&str> for OpType {
+    fn from(value: &str) -> Self {
+        match value {
+            "+" => OpType::Add,
+            "-" => OpType::Substract,
+            "/" => OpType::Divide,
+            "*" => OpType::Multiply,
+            "&&" => OpType::And,
+            "||" => OpType::Or,
+            "==" => OpType::Equal,
+            "!=" => OpType::NotEqual,
+            ">" => OpType::GreaterThan,
+            "<" => OpType::LessThan,
+            _ => panic!("unknown operator {}", value),
+        }
     }
 }
 
