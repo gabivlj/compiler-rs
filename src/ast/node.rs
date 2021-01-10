@@ -47,8 +47,8 @@ pub enum Expression {
     /// If refers to an if node
     If {
         condition: Box<NodeToken<Expression>>,
-        block: Box<Vec<NodeToken<Statement>>>,
-        else_ifs: Option<Vec<NodeToken<Statement>>>,
+        block: Vec<NodeToken<Statement>>,
+        else_ifs: Option<Vec<NodeToken<Expression>>>,
         last_else: Option<Vec<NodeToken<Statement>>>,
     },
 
@@ -59,6 +59,10 @@ pub enum Expression {
     Assignment(String, Box<NodeToken<Expression>>),
 
     PrefixOp(String, Box<NodeToken<Expression>>),
+
+    Block(Vec<NodeToken<Statement>>),
+
+    Boolean(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -163,6 +167,53 @@ impl Expression {
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
+            Expression::If {
+                condition,
+                last_else,
+                else_ifs,
+                block,
+            } => {
+                let last_else_string = if last_else.is_none() {
+                    String::new()
+                } else {
+                    format!(
+                        " else {{{}}}",
+                        last_else
+                            .as_ref()
+                            .unwrap()
+                            .iter()
+                            .fold(String::new(), |prev, now| {
+                                format!("{} {}; ", prev, now.str())
+                            })
+                    )
+                };
+                let elses = if else_ifs.is_none() {
+                    String::new()
+                } else {
+                    format!(
+                        "{}",
+                        else_ifs
+                            .as_ref()
+                            .unwrap()
+                            .iter()
+                            .fold(String::new(), |prev, now| {
+                                format!("{} else {}", prev, now.str())
+                            })
+                    )
+                };
+                let bl_str = block.iter().fold(String::new(), |prev, now| {
+                    format!("{}{}; ", prev, now.str())
+                });
+                format!(
+                    "{} {} {{ {}}}{}{}",
+                    "if",
+                    condition.str(),
+                    bl_str,
+                    elses,
+                    last_else_string
+                )
+            }
+            Expression::Boolean(bool) => format!("{}", bool),
             _ => unimplemented!(),
         }
     }

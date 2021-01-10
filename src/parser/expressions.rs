@@ -29,6 +29,7 @@ impl<'a> Parser<'a> {
         Ok(node)
     }
 
+    /// parse expression with pratt's
     fn parse_expression(&mut self, prec: Precedence) -> Result<NodeToken<Expression>, String> {
         // Get left expression
         let mut left_expr = self.prefix_expression()?;
@@ -49,6 +50,7 @@ impl<'a> Parser<'a> {
         Ok(left_expr)
     }
 
+    /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         match self.current_token.token_type {
             TokenType::Ident => Ok(NodeToken::new(
@@ -64,6 +66,13 @@ impl<'a> Parser<'a> {
                 ),
                 self.next_token(),
             )),
+            TokenType::True => Ok(NodeToken::new(Expression::Boolean(true), self.next_token())),
+            TokenType::False => Ok(NodeToken::new(
+                Expression::Boolean(false),
+                self.next_token(),
+            )),
+            TokenType::LParen => self.parse_grouped_expression(),
+            TokenType::If => self.parse_if(),
             TokenType::Minus | TokenType::Bang | TokenType::Plus => self.parse_prefix_expression(),
             _ => Err(format!(
                 "can't parse unknown prefix: {:?}",
@@ -72,6 +81,9 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// get the left expression and with the current token return an infix expression
+    /// if the result is an error, it will return the expression ownership to the caller,
+    /// otherwise, it will return as normal the infix parse.
     fn infix_expression(
         &mut self,
         left: NodeToken<Expression>,
@@ -89,6 +101,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// parse binary operations like == or + or -
     fn parse_infix_expression(
         &mut self,
         left: NodeToken<Expression>,
@@ -106,12 +119,68 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// parse if statements
+    fn parse_if(&mut self) -> Result<NodeToken<Expression>, String> {
+        self.expect_current(TokenType::If)?;
+        let if_token = self.next_token();
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        self.expect_current(TokenType::LBrace)?;
+        self.next_token();
+        let mut block = vec![];
+        while !self.is_current(TokenType::RBrace) {
+            block.push(self.parse_expression_statement()?);
+        }
+        self.next_token();
+        let mut wasted_last_else = false;
+        let mut ifs = vec![];
+        let mut last_else = None;
+        // TODO: Do this but with Blocks and add a prefix block parsing
+        while self.is_current(TokenType::Else) {
+            self.next_token();
+            let mut block = vec![];
+            if self.is_current(TokenType::If) && !wasted_last_else {
+                let curr_if = self.parse_if()?;
+                ifs.push(curr_if);
+            } else if !wasted_last_else {
+                wasted_last_else = true;
+                self.expect_current(TokenType::LBrace)?;
+                self.next_token();
+                while !self.is_current(TokenType::RBrace) {
+                    block.push(self.parse_expression_statement()?);
+                }
+                last_else = Some(block);
+            } else {
+                return Err(format!(
+                    "Can't have multiple elses or adding a last else before an else condition"
+                ));
+            }
+        }
+        let expr = Expression::If {
+            block,
+            else_ifs: if ifs.len() == 0 { None } else { Some(ifs) },
+            last_else,
+            condition: Box::new(condition),
+        };
+        Ok(NodeToken::new(expr, if_token))
+    }
+
+    /// parse ! or - operators
     fn parse_prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         let token = self.next_token();
         let op = token.string.clone();
         let right = self.parse_expression(Precedence::Prefix)?;
         let expr = NodeToken::new(Expression::PrefixOp(op, Box::new(right)), token);
         Ok(expr)
+    }
+
+    /// Parse expressions inside parenthesis
+    fn parse_grouped_expression(&mut self) -> Result<NodeToken<Expression>, String> {
+        assert_eq!(self.current_token.token_type, TokenType::LParen);
+        self.next_token();
+        let exp = self.parse_expression(Precedence::Lowest);
+        self.expect_current(TokenType::RParen)?;
+        self.next_token();
+        exp
     }
 
     fn get_precedence(token: &TokenType) -> Precedence {
@@ -139,7 +208,7 @@ mod test {
     #![allow(unused_variables)]
     #![allow(dead_code)]
     #![allow(unused_imports)]
-    use crate::ast::node::{Expression, NodeToken, OpType, Statement};
+    use crate::ast::node::{Expression, NodeToken, OpType, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::Token;
@@ -303,12 +372,79 @@ mod test {
                 "3 + 4 * 5 == 3 * 1 + 4 * 5",
                 "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
             ),
+            ("3 > 5 == false", "((3 > 5) == false)"),
+            ("false", "false"),
+            ("!!!!false", "(!(!(!(!false))))"),
+            ("3 > 5 == true", "((3 > 5) == true)"),
+            ("true", "true"),
+            ("!!!!true", "(!(!(!(!true))))"),
+            ("(5 + 5) / 2", "((5 + 5) / 2)"),
+            // ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            // ("-(5 + 5)", "(-(5 + 5))"),
+            // ("!(true == true)", "(!(true == true))"),
         ];
 
         for test in input.iter() {
-            let mut program = get_program(test.0);
+            let program = get_program(test.0);
             let str = Statement::Program(program).string(&Token::empty());
             assert_eq!(&str, test.1);
+        }
+    }
+    #[test]
+    fn test_parse_boolean() {
+        let input = [("true", true), ("false;", false)];
+        for test in input.iter() {
+            let mut program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            if let Statement::ExpressionStatement(val) = program.pop().unwrap().node {
+                if let Expression::Boolean(value) = val.node {
+                    assert_eq!(test.1, value);
+                } else {
+                    panic!("not a boolean expression")
+                }
+            } else {
+                panic!("not an expression statement")
+            }
+        }
+    }
+
+    #[test]
+    fn test_if() {
+        let input = [("
+            if (x == true) {
+                1 + 2;
+                if (x == false) {
+                    3 + 3;                 
+                }                
+            } else if 1 + 3 { 
+                3 
+            } else if !!!!!---((((1+3)))) {
+                1992192 + 33 * 3
+            } else {
+                3 + 5
+            }
+        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ("
+            if (x == true) {
+                1 + 2;
+                if (x == false) {
+                    3 + 3;
+                    3 * 3;
+                    3 / 3;         
+                }                
+            } else if 1 + 3 { 
+                3 
+            } else if !!!!!---((((1+3)))) {
+                1992192 + 33 * 3
+            } else {
+                3 + 5
+            }
+        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ];
+        for test in input.iter() {
+            let mut program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            assert_eq!(test.1, program[0].str());
         }
     }
 }
