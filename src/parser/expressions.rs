@@ -148,6 +148,7 @@ impl<'a> Parser<'a> {
                 while !self.is_current(TokenType::RBrace) {
                     block.push(self.parse_expression_statement()?);
                 }
+                self.next_token();
                 last_else = Some(block);
             } else {
                 return Err(format!(
@@ -212,6 +213,49 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::Token;
+
+    #[test]
+    fn test_if() {
+        let input = [
+            ("
+            if (x == true) {
+                1 + 2;
+                if (x == false) {
+                    3 + 3;                 
+                }                
+            } else if 1 + 3 { 
+                3 
+            } else if !!!!!---((((1+3)))) {
+                1992192 + 33 * 3
+            } else {
+                3 + 5
+            }
+        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ("
+            if (x == true) {
+                1 + 2;
+                if (x == false) {
+                    3 + 3;
+                    3 * 3;
+                    3 / 3;         
+                } else {
+                    3
+                }   
+            } else if 1 + 3 { 
+                3 
+            } else if !!!!!---((((1+3)))) {
+                1992192 + 33 * 3
+            } else {
+                3 + 5
+            }
+        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); } else { 3; }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ];
+        for test in input.iter() {
+            let mut program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            assert_eq!(test.1, program[0].str());
+        }
+    }
 
     fn get_program(input: &str) -> Vec<NodeToken<Statement>> {
         let lexer = Lexer::new(input);
@@ -405,46 +449,6 @@ mod test {
             } else {
                 panic!("not an expression statement")
             }
-        }
-    }
-
-    #[test]
-    fn test_if() {
-        let input = [("
-            if (x == true) {
-                1 + 2;
-                if (x == false) {
-                    3 + 3;                 
-                }                
-            } else if 1 + 3 { 
-                3 
-            } else if !!!!!---((((1+3)))) {
-                1992192 + 33 * 3
-            } else {
-                3 + 5
-            }
-        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
-        ("
-            if (x == true) {
-                1 + 2;
-                if (x == false) {
-                    3 + 3;
-                    3 * 3;
-                    3 / 3;         
-                }                
-            } else if 1 + 3 { 
-                3 
-            } else if !!!!!---((((1+3)))) {
-                1992192 + 33 * 3
-            } else {
-                3 + 5
-            }
-        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
-        ];
-        for test in input.iter() {
-            let mut program = get_program(test.0);
-            assert_eq!(program.len(), 1);
-            assert_eq!(test.1, program[0].str());
         }
     }
 }
