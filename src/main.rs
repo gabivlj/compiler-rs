@@ -2,6 +2,14 @@ pub mod ast;
 pub mod lexer;
 pub mod parser;
 pub mod token;
+
+#[cfg(not(target_env = "msvc"))]
+use jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 fn main() {
     use ast::node::{Statement, Str};
     use lexer::Lexer;
@@ -24,12 +32,8 @@ fn main() {
     let elapsed = std::time::Instant::now();
     for i in 0..1000 {
         let mut l = Lexer::new(&s);
-        loop {
-            if l.next_token() != token::TokenType::EOF {
-            } else {
-                break;
-            }
-        }
+        let p = Parser::new(l).parse_program();
+        p.unwrap();
     }
     println!("elapsed: {}", elapsed.elapsed().as_millis());
 }

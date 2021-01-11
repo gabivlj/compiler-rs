@@ -24,6 +24,8 @@ impl<T: Clone> NodeToken<T> {
     }
 }
 
+use std::borrow::Cow;
+
 #[derive(Debug, Clone)]
 pub enum Expression {
     /// We'll only have u64 values atm
@@ -31,7 +33,7 @@ pub enum Expression {
 
     /// Id is an identifier
     /// `let f = 0;` would create an identifier called f
-    Id(String),
+    Id(Cow<'static, str>),
 
     BinaryOp(
         Box<NodeToken<Expression>>,
@@ -72,7 +74,7 @@ pub enum Statement {
     While(Box<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
 
     /// Var contains the variable name and the expression value that is assigned to
-    Var(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
+    Var(Cow<'static, str>, Box<NodeToken<Expression>>),
 
     /// Return represents a return statement
     Return(Box<NodeToken<Expression>>),
@@ -147,7 +149,7 @@ impl Statement {
                 tokens.iter().fold(String::new(), |acc, x| acc + &x.str())
             }
             Statement::Var(identifier, expression) => {
-                format!("{} {} = {};", token, identifier.str(), expression.str())
+                format!("{} {} = {};", token, identifier, expression.str())
             }
             Statement::ExpressionStatement(expr) => expr.str(),
             Statement::Return(expr) => format!("{} {};", token, expr.str()),
@@ -169,7 +171,7 @@ fn parameters_to_string(vec: &Vec<NodeToken<Expression>>) -> String {
 impl Expression {
     pub fn string(&self) -> String {
         match self {
-            Expression::Id(identifier) => identifier.clone(),
+            Expression::Id(identifier) => identifier.to_string(),
             Expression::Number(n) => n.to_string(),
             Expression::PrefixOp(op, val) => format!("({}{})", op.to_string(), val.str()),
             Expression::BinaryOp(left, right, op) => {
@@ -311,17 +313,15 @@ impl From<&TokenType> for OpType {
 mod test {
     use crate::ast::node::{Expression, Node, NodeToken, Statement};
     use crate::token::{Token, TokenType};
+    use std::borrow::Cow;
     #[test]
     fn check_string() {
         let program = Statement::Program(vec![NodeToken::new(
             Statement::Var(
+                Cow::Borrowed("myVar"),
                 NodeToken::new_boxed(
-                    Expression::Id("myVar".to_string()),
-                    TokenType::Ident("myVar".to_string()),
-                ),
-                NodeToken::new_boxed(
-                    Expression::Id("anotherVar".to_string()),
-                    TokenType::Ident("anotherVar".to_string()),
+                    Expression::Id(Cow::Borrowed("anotherVar")),
+                    TokenType::Ident(Cow::Borrowed("anotherVar")),
                 ),
             ),
             TokenType::Let,

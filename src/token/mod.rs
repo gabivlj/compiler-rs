@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::unimplemented;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -6,7 +7,7 @@ pub enum TokenType {
     Equal,
     Illegal(String),
     EOF,
-    Ident(String),
+    Ident(Cow<'static, str>),
     Assign,
     Plus,
     Comma,
@@ -42,7 +43,8 @@ impl std::fmt::Display for TokenType {
         match self {
             TokenType::LParen => write!(f, "("),
             TokenType::RParen => write!(f, ")"),
-            TokenType::Ident(s) | TokenType::Illegal(s) => write!(f, "{}", s),
+            TokenType::Ident(s) => write!(f, "{}", s),
+            TokenType::Illegal(s) => write!(f, "{}", s),
             TokenType::Assign => write!(f, "="),
             TokenType::Plus => write!(f, "+"),
             TokenType::LBrace => write!(f, "{{"),

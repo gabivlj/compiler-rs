@@ -51,8 +51,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_identifier(&mut self) -> Result<NodeToken<Expression>, String> {
-        if let TokenType::Ident(id) = self.current_token.clone() {
-            Ok(NodeToken::new(Expression::Id(id), self.next_token()))
+        let token = self.next_token();
+        if let TokenType::Ident(id) = &token {
+            Ok(NodeToken::new(Expression::Id(id.clone()), token))
         } else {
             Err("expected identifier".to_string())
         }
@@ -98,7 +99,6 @@ impl<'a> Parser<'a> {
         let mut params = vec![];
         while !self.is_current(&TokenType::RParen) && !self.is_current(&TokenType::EOF) {
             let exp = self.parse_expression(Precedence::Lowest)?;
-            // println!("{}", exp.str());
             params.push(exp);
             if self.is_current(&TokenType::Comma) && !self.is_peek(&TokenType::Comma) {
                 self.next_token();

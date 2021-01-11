@@ -75,17 +75,14 @@ impl<'a> Parser<'a> {
         let token = self.next_token();
         self.expect_peek(&TokenType::Assign)?;
         let name = self.next_token();
-        if let TokenType::Ident(name_s) = &name {
+        if let TokenType::Ident(name_s) = name {
             self.next_token();
             let expr = self.parse_expression(Precedence::Lowest)?;
             while self.is_current(&TokenType::Semicolon) {
                 self.next_token();
             }
             Ok(NodeToken::new(
-                Statement::Var(
-                    NodeToken::new_boxed(Expression::Id(name_s.clone()), name),
-                    Box::new(expr),
-                ),
+                Statement::Var(name_s, Box::new(expr)),
                 token,
             ))
         } else {
@@ -164,12 +161,7 @@ mod test {
             } else {
                 panic!("not a let statement");
             };
-            assert_eq!(&identifier_expr.token.to_string(), test);
-            if let Expression::Id(value) = &identifier_expr.as_ref().node {
-                assert_eq!(test, &value);
-            } else {
-                panic!("not an identifier, got {:?}", identifier_expr);
-            }
+            assert_eq!(&identifier_expr, test);
         }
     }
 

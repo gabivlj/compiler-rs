@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::token::{Token, TokenType};
+use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -10,9 +11,10 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    #[inline]
     /// returns the current character that is peeking
-    fn char(&mut self) -> Option<char> {
-        self.input.peek().map(|char| *char)
+    fn char(&mut self) -> char {
+        self.input.peek().map(|x| *x).unwrap_or('\0')
     }
 
     fn next(&mut self) {
@@ -29,8 +31,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline]
     /// looksup in the identifier table if the string being passed is a string
-    fn lookup_ident(&self, string: &str) -> TokenType {
+    fn lookup_ident(string: &'static str) -> TokenType {
         match string {
             "let" => TokenType::Let,
             "fn" => TokenType::Function,
@@ -39,13 +42,15 @@ impl<'a> Lexer<'a> {
             "false" => TokenType::False,
             "return" => TokenType::Return,
             "else" => TokenType::Else,
-            _ => TokenType::Ident(string.to_string()),
+            _ => TokenType::Ident(Cow::Borrowed(string)),
         }
     }
 
+    #[inline]
     /// skips all the possible whitespace
     fn skip_whitespace(&mut self) {
-        while let Some(char) = self.char() {
+        loop {
+            let char = self.char();
             if char.is_whitespace() {
                 self.next();
                 continue;
@@ -54,26 +59,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    #[inline]
     /// read_identifier reads an entire string, and returns the string with the starting_char.
     /// `starting_char` parameter is really useful because we can't go back in the iterator
-    fn read_identifier(&mut self) -> String {
+    fn read_identifier(&mut self) -> &'static str {
         let start = self.position - 1;
-        while let Some(char) = self.char() {
-            if !char.is_ascii_alphanumeric() {
+        while self.char() != '\0' {
+            if !self.char().is_ascii_alphanumeric() {
                 break;
             }
             self.next();
         }
-        self.string[start..self.position].to_string()
+        unsafe { std::mem::transmute(&self.string[start..self.position]) }
     }
 
+    #[inline]
     fn peek_possible_two_len(&mut self, expected: char) -> Option<char> {
-        if let Some(c) = self.char() {
-            if c == expected {
-                Some(expected)
-            } else {
-                None
-            }
+        if self.char() == expected {
+            Some(expected)
         } else {
             None
         }
@@ -86,27 +89,27 @@ impl<'a> Lexer<'a> {
         self.next();
         match c {
             // Single tokens
-            Some(';') => TokenType::Semicolon,
-            Some('(') => TokenType::LParen,
-            Some(')') => TokenType::RParen,
-            Some('+') => TokenType::Plus,
-            Some('{') => TokenType::LBrace,
-            Some('}') => TokenType::RBrace,
-            Some(',') => TokenType::Comma,
-            Some('-') => TokenType::Minus,
-            Some('>') => TokenType::GreaterThan,
-            Some('<') => TokenType::LessThan,
-            Some('/') => TokenType::Slash,
-            Some('*') => TokenType::Asterisk,
+            ';' => TokenType::Semicolon,
+            '(' => TokenType::LParen,
+            ')' => TokenType::RParen,
+            '+' => TokenType::Plus,
+            '{' => TokenType::LBrace,
+            '}' => TokenType::RBrace,
+            ',' => TokenType::Comma,
+            '-' => TokenType::Minus,
+            '>' => TokenType::GreaterThan,
+            '<' => TokenType::LessThan,
+            '/' => TokenType::Slash,
+            '*' => TokenType::Asterisk,
             // Possible single tokens or with more combinations
-            Some('=') => match self.peek_possible_two_len('=') {
+            '=' => match self.peek_possible_two_len('=') {
                 Some(_) => {
                     self.next();
                     TokenType::Equal
                 }
                 None => TokenType::Assign,
             },
-            Some('!') => match self.peek_possible_two_len('=') {
+            '!' => match self.peek_possible_two_len('=') {
                 Some(_) => {
                     self.next();
                     TokenType::NotEqual
@@ -114,9 +117,9 @@ impl<'a> Lexer<'a> {
                 None => TokenType::Bang,
             },
             // Definitely an EOF
-            None => TokenType::EOF,
+            '\0' => TokenType::EOF,
             // check for an identifier
-            Some(c) => {
+            c => {
                 // read entire identifier string with our unknown starting char to be included
                 let string = self.read_identifier();
                 // check if it's an integer
@@ -125,12 +128,12 @@ impl<'a> Lexer<'a> {
                         // validate integer
                         let valid_integer = string.parse::<u64>();
                         if valid_integer.is_err() {
-                            return TokenType::Illegal(string);
+                            return TokenType::Illegal(string.to_string());
                         }
                         TokenType::Int(valid_integer.unwrap())
                     }
                     // lookup identifier type
-                    _ => self.lookup_ident(&string),
+                    _ => Lexer::lookup_ident(string),
                 };
                 ident
             }
@@ -139,10 +142,12 @@ impl<'a> Lexer<'a> {
 }
 
 mod test {
+
     #![allow(dead_code)]
     #![allow(unused_imports)]
     use crate::lexer::Lexer;
     use crate::token::{Token, TokenType};
+    use std::borrow::Cow;
     #[test]
     fn check_next_token() {
         let tests = vec![
@@ -197,39 +202,39 @@ mod test {
 
         let tests = vec![
             (TokenType::Let, "let"),
-            (TokenType::Ident("five".to_string()), "five"),
+            (TokenType::Ident(Cow::Borrowed("five")), "five"),
             (TokenType::Assign, "="),
             (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident("ten".to_string()), "ten"),
+            (TokenType::Ident(Cow::Borrowed("ten")), "ten"),
             (TokenType::Assign, "="),
             (TokenType::Int(10), "10"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident("add".to_string()), "add"),
+            (TokenType::Ident(Cow::Borrowed("add")), "add"),
             (TokenType::Assign, "="),
             (TokenType::Function, "fn"),
             (TokenType::LParen, "("),
-            (TokenType::Ident("x".to_string()), "x"),
+            (TokenType::Ident(Cow::Borrowed("x")), "x"),
             (TokenType::Comma, ","),
-            (TokenType::Ident("y".to_string()), "y"),
+            (TokenType::Ident(Cow::Borrowed("y")), "y"),
             (TokenType::RParen, ")"),
             (TokenType::LBrace, "{"),
-            (TokenType::Ident("x".to_string()), "x"),
+            (TokenType::Ident(Cow::Borrowed("x")), "x"),
             (TokenType::Plus, "+"),
-            (TokenType::Ident("y".to_string()), "y"),
+            (TokenType::Ident(Cow::Borrowed("y")), "y"),
             (TokenType::Semicolon, ";"),
             (TokenType::RBrace, "}"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident("result".to_string()), "result"),
+            (TokenType::Ident(Cow::Borrowed("result")), "result"),
             (TokenType::Assign, "="),
-            (TokenType::Ident("add".to_string()), "add"),
+            (TokenType::Ident(Cow::Borrowed("add")), "add"),
             (TokenType::LParen, "("),
-            (TokenType::Ident("five".to_string()), "five"),
+            (TokenType::Ident(Cow::Borrowed("five")), "five"),
             (TokenType::Comma, ","),
-            (TokenType::Ident("ten".to_string()), "ten"),
+            (TokenType::Ident(Cow::Borrowed("ten")), "ten"),
             (TokenType::RParen, ")"),
             (TokenType::Semicolon, ";"),
             (TokenType::Bang, "!"),
