@@ -5,6 +5,8 @@ use std::str::Chars;
 
 pub struct Lexer<'a> {
     input: Peekable<Chars<'a>>,
+    string: &'a str,
+    position: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -13,9 +15,17 @@ impl<'a> Lexer<'a> {
         self.input.peek().map(|char| *char)
     }
 
+    fn next(&mut self) {
+        self.input.next();
+        self.position += 1;
+    }
+
     pub fn new(str: &'a str) -> Self {
+        let iter = str.chars().peekable();
         Self {
-            input: str.chars().peekable(),
+            input: iter,
+            string: str,
+            position: 0,
         }
     }
 
@@ -29,7 +39,7 @@ impl<'a> Lexer<'a> {
             "false" => TokenType::False,
             "return" => TokenType::Return,
             "else" => TokenType::Else,
-            _ => TokenType::Ident,
+            _ => TokenType::Ident(string.to_string()),
         }
     }
 
@@ -37,7 +47,7 @@ impl<'a> Lexer<'a> {
     fn skip_whitespace(&mut self) {
         while let Some(char) = self.char() {
             if char.is_whitespace() {
-                self.input.next();
+                self.next();
                 continue;
             }
             break;
@@ -46,17 +56,15 @@ impl<'a> Lexer<'a> {
 
     /// read_identifier reads an entire string, and returns the string with the starting_char.
     /// `starting_char` parameter is really useful because we can't go back in the iterator
-    fn read_identifier(&mut self, starting_char: char) -> String {
-        let mut string = String::with_capacity(10);
-        string.push(starting_char);
+    fn read_identifier(&mut self) -> String {
+        let start = self.position - 1;
         while let Some(char) = self.char() {
             if !char.is_ascii_alphanumeric() {
                 break;
             }
-            string.push(char);
-            self.input.next();
+            self.next();
         }
-        string
+        self.string[start..self.position].to_string()
     }
 
     fn peek_possible_two_len(&mut self, expected: char) -> Option<char> {
@@ -71,64 +79,60 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> TokenType {
         self.skip_whitespace();
         let c = self.char();
         // go to the next character so we can peek in internal logic
-        self.input.next();
+        self.next();
         match c {
             // Single tokens
-            Some(';') => Token::new(";", TokenType::Semicolon),
-            Some('(') => Token::new("(", TokenType::LParen),
-            Some(')') => Token::new(")", TokenType::RParen),
-            Some('+') => Token::new("+", TokenType::Plus),
-            Some('{') => Token::new("{", TokenType::LBrace),
-            Some('}') => Token::new("}", TokenType::RBrace),
-            Some(',') => Token::new(",", TokenType::Comma),
-            Some('-') => Token::new("-", TokenType::Minus),
-            Some('>') => Token::new(">", TokenType::GreaterThan),
-            Some('<') => Token::new("<", TokenType::LessThan),
-            Some('/') => Token::new("/", TokenType::Slash),
-            Some('*') => Token::new("*", TokenType::Asterisk),
+            Some(';') => TokenType::Semicolon,
+            Some('(') => TokenType::LParen,
+            Some(')') => TokenType::RParen,
+            Some('+') => TokenType::Plus,
+            Some('{') => TokenType::LBrace,
+            Some('}') => TokenType::RBrace,
+            Some(',') => TokenType::Comma,
+            Some('-') => TokenType::Minus,
+            Some('>') => TokenType::GreaterThan,
+            Some('<') => TokenType::LessThan,
+            Some('/') => TokenType::Slash,
+            Some('*') => TokenType::Asterisk,
             // Possible single tokens or with more combinations
             Some('=') => match self.peek_possible_two_len('=') {
                 Some(_) => {
-                    self.input.next();
-                    Token::new("==", TokenType::Equal)
+                    self.next();
+                    TokenType::Equal
                 }
-                None => Token::new("=", TokenType::Assign),
+                None => TokenType::Assign,
             },
             Some('!') => match self.peek_possible_two_len('=') {
                 Some(_) => {
-                    self.input.next();
-                    Token::new("!=", TokenType::NotEqual)
+                    self.next();
+                    TokenType::NotEqual
                 }
-                None => Token::new("!", TokenType::Bang),
+                None => TokenType::Bang,
             },
             // Definitely an EOF
-            None => Token::new("", TokenType::EOF),
+            None => TokenType::EOF,
             // check for an identifier
             Some(c) => {
                 // read entire identifier string with our unknown starting char to be included
-                let string = self.read_identifier(c);
+                let string = self.read_identifier();
                 // check if it's an integer
                 let ident = match c {
                     '0'..='9' => {
                         // validate integer
-                        let valid_integer = string
-                            .chars()
-                            .filter(|x| '0' > *x || *x > '9')
-                            .next()
-                            .is_none();
-                        if !valid_integer {
-                            return Token::new(&string, TokenType::Illegal);
+                        let valid_integer = string.parse::<u64>();
+                        if valid_integer.is_err() {
+                            return TokenType::Illegal(string);
                         }
-                        TokenType::Int
+                        TokenType::Int(valid_integer.unwrap())
                     }
                     // lookup identifier type
                     _ => self.lookup_ident(&string),
                 };
-                Token::new(&string, ident)
+                ident
             }
         }
     }
@@ -158,16 +162,10 @@ mod test {
         let mut lexer = Lexer::new(&input);
         for (ii, test) in tests.iter().enumerate() {
             let tok = lexer.next_token();
-            if tok.token_type != test.0 {
+            if tok != test.0 {
                 panic!(
                     "tests[{}] - tokentype wrong. expected={:?}, got: {:?}",
-                    ii, tok.token_type, test.0
-                );
-            }
-            if tok.string != test.1 {
-                panic!(
-                    "tests[{}] - token literal wrong. expected={:?}, got: {:?}",
-                    ii, tok.string, test.1
+                    ii, tok, test.0
                 );
             }
         }
@@ -199,58 +197,58 @@ mod test {
 
         let tests = vec![
             (TokenType::Let, "let"),
-            (TokenType::Ident, "five"),
+            (TokenType::Ident("five".to_string()), "five"),
             (TokenType::Assign, "="),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident, "ten"),
+            (TokenType::Ident("ten".to_string()), "ten"),
             (TokenType::Assign, "="),
-            (TokenType::Int, "10"),
+            (TokenType::Int(10), "10"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident, "add"),
+            (TokenType::Ident("add".to_string()), "add"),
             (TokenType::Assign, "="),
             (TokenType::Function, "fn"),
             (TokenType::LParen, "("),
-            (TokenType::Ident, "x"),
+            (TokenType::Ident("x".to_string()), "x"),
             (TokenType::Comma, ","),
-            (TokenType::Ident, "y"),
+            (TokenType::Ident("y".to_string()), "y"),
             (TokenType::RParen, ")"),
             (TokenType::LBrace, "{"),
-            (TokenType::Ident, "x"),
+            (TokenType::Ident("x".to_string()), "x"),
             (TokenType::Plus, "+"),
-            (TokenType::Ident, "y"),
+            (TokenType::Ident("y".to_string()), "y"),
             (TokenType::Semicolon, ";"),
             (TokenType::RBrace, "}"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident, "result"),
+            (TokenType::Ident("result".to_string()), "result"),
             (TokenType::Assign, "="),
-            (TokenType::Ident, "add"),
+            (TokenType::Ident("add".to_string()), "add"),
             (TokenType::LParen, "("),
-            (TokenType::Ident, "five"),
+            (TokenType::Ident("five".to_string()), "five"),
             (TokenType::Comma, ","),
-            (TokenType::Ident, "ten"),
+            (TokenType::Ident("ten".to_string()), "ten"),
             (TokenType::RParen, ")"),
             (TokenType::Semicolon, ";"),
             (TokenType::Bang, "!"),
             (TokenType::Minus, "-"),
             (TokenType::Slash, "/"),
             (TokenType::Asterisk, "*"),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::LessThan, "<"),
-            (TokenType::Int, "10"),
+            (TokenType::Int(10), "10"),
             (TokenType::GreaterThan, ">"),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
             (TokenType::If, "if"),
             (TokenType::LParen, "("),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::LessThan, "<"),
-            (TokenType::Int, "10"),
+            (TokenType::Int(10), "10"),
             (TokenType::RParen, ")"),
             (TokenType::LBrace, "{"),
             (TokenType::Return, "return"),
@@ -263,29 +261,29 @@ mod test {
             (TokenType::False, "false"),
             (TokenType::Semicolon, ";"),
             (TokenType::RBrace, "}"),
-            (TokenType::Int, "5"),
+            (TokenType::Int(5), "5"),
             (TokenType::NotEqual, "!="),
-            (TokenType::Int, "10"),
-            (TokenType::Int, "5"),
+            (TokenType::Int(10), "10"),
+            (TokenType::Int(5), "5"),
             (TokenType::Equal, "=="),
-            (TokenType::Int, "10"),
+            (TokenType::Int(10), "10"),
             (TokenType::EOF, ""),
         ];
         let mut lexer = Lexer::new(&input);
         for (ii, test) in tests.iter().enumerate() {
             let tok = lexer.next_token();
-            if tok.token_type != test.0 {
+            if tok != test.0 {
                 panic!(
-                    "tests[{}] - tokentype `{}` wrong. expected={:?}, got: {:?}",
-                    ii, tok.string, test.0, tok.token_type
+                    "tests[{}] - tokentype `{:?}` wrong. expected={:?}",
+                    ii, tok, test.0
                 );
             }
-            if tok.string != test.1 {
-                panic!(
-                    "tests[{}] - token literal wrong. expected={:?}, got: {:?}",
-                    ii, test.1, tok.string,
-                );
-            }
+            // if tok.string != test.1 {
+            //     panic!(
+            //         "tests[{}] - token literal wrong. expected={:?}, got: {:?}",
+            //         ii, test.1, tok.string,
+            //     );
+            // }
         }
     }
 }

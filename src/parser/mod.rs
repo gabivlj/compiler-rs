@@ -8,51 +8,51 @@ use crate::token::{Token, TokenType};
 use expressions::Precedence;
 
 pub struct Parser<'a> {
-    current_token: Token,
+    current_token: TokenType,
     lexer: Lexer<'a>,
-    peek_token: Token,
+    peek_token: TokenType,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(lexer: Lexer<'a>) -> Self {
         let mut p = Self {
             lexer,
-            current_token: Token::empty(),
-            peek_token: Token::empty(),
+            current_token: TokenType::EOF,
+            peek_token: TokenType::EOF,
         };
         p.next_token();
         p.next_token();
         p
     }
 
-    fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> TokenType {
         std::mem::swap(&mut self.current_token, &mut self.peek_token);
         std::mem::replace(&mut self.peek_token, self.lexer.next_token())
     }
 
     pub fn parse_program(&mut self) -> Result<NodeToken<Statement>, String> {
         let mut statements = Vec::new();
-        while self.current_token.token_type != TokenType::EOF {
+        while self.current_token != TokenType::EOF {
             let stmt = self.parse_stmt();
             if let Ok(s) = stmt {
                 statements.push(s);
             } else {
                 // We map to get the type that we want
-                return stmt.map(|_| NodeToken::new(Statement::Empty, Token::empty()));
+                return stmt.map(|_| NodeToken::new(Statement::Empty, TokenType::EOF));
             }
         }
         Ok(NodeToken::new(
             Statement::Program(statements),
-            Token::empty(),
+            TokenType::EOF,
         ))
     }
 
     fn parse_stmt(&mut self) -> Result<NodeToken<Statement>, String> {
-        match self.current_token.token_type {
+        match self.current_token {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
-            TokenType::Ident => {
-                if self.is_peek(TokenType::Assign) {
+            TokenType::Ident(_) => {
+                if self.is_peek(&TokenType::Assign) {
                     Err("unimplemented".to_string())
                 } else {
                     self.parse_expression_statement()
@@ -65,7 +65,7 @@ impl<'a> Parser<'a> {
     fn parse_return_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
         let exp = self.parse_expression(Precedence::Lowest)?;
-        while self.is_current(TokenType::Semicolon) {
+        while self.is_current(&TokenType::Semicolon) {
             self.next_token();
         }
         Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
@@ -73,30 +73,33 @@ impl<'a> Parser<'a> {
 
     fn parse_let_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
-        self.expect_current(TokenType::Ident)?;
-        self.expect_peek(TokenType::Assign)?;
+        self.expect_peek(&TokenType::Assign)?;
         let name = self.next_token();
-        self.next_token();
-        let expr = self.parse_expression(Precedence::Lowest)?;
-        while self.is_current(TokenType::Semicolon) {
+        if let TokenType::Ident(name_s) = &name {
             self.next_token();
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            while self.is_current(&TokenType::Semicolon) {
+                self.next_token();
+            }
+            Ok(NodeToken::new(
+                Statement::Var(
+                    NodeToken::new_boxed(Expression::Id(name_s.clone()), name),
+                    Box::new(expr),
+                ),
+                token,
+            ))
+        } else {
+            Err("expected identifier".to_string())
         }
-        Ok(NodeToken::new(
-            Statement::Var(
-                NodeToken::new_boxed(Expression::Id(name.string.clone()), name),
-                Box::new(expr),
-            ),
-            token,
-        ))
     }
 }
 
 impl<'a> Parser<'a> {
-    fn is_peek(&self, token_type: TokenType) -> bool {
-        self.peek_token.token_type == token_type
+    fn is_peek(&self, token_type: &TokenType) -> bool {
+        &self.peek_token == token_type
     }
 
-    fn expect_peek(&self, token_type: TokenType) -> Result<(), String> {
+    fn expect_peek(&self, token_type: &TokenType) -> Result<(), String> {
         if !self.is_peek(token_type) {
             Err(format!(
                 "expected token type: {:?} got={:?}",
@@ -107,12 +110,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_current(&self, token_type: TokenType) -> bool {
-        self.current_token.token_type == token_type
+    fn is_current(&self, token_type: &TokenType) -> bool {
+        &self.current_token == token_type
     }
 
-    fn expect_current(&self, token_type: TokenType) -> Result<(), String> {
-        if !self.is_current(token_type) {
+    fn expect_current(&self, token_type: &TokenType) -> Result<(), String> {
+        if !self.is_current(&token_type) {
             Err(format!(
                 "expected: {:?} got={:?}",
                 token_type, self.current_token
@@ -126,8 +129,10 @@ impl<'a> Parser<'a> {
 mod test {
     use core::panic;
 
-    use crate::parser::{Parser, Statement};
-    use crate::{ast::node::Expression, lexer::Lexer};
+    use crate::ast::node::{Expression, Statement};
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::token::TokenType;
     #[test]
     fn test_let_stmt() {
         let input = "let x = 5;;;;;;
@@ -151,15 +156,15 @@ mod test {
         let tests = vec!["x", "y", "foobar"];
         for (i, test) in tests.iter().enumerate() {
             let stmt = &program[i];
-            if stmt.token.string != "let" {
-                panic!("got: {} instead of let", stmt.token.string);
+            if stmt.token != TokenType::Let {
+                panic!("got: {} instead of let", stmt.token);
             }
             let (identifier_expr, _) = if let Statement::Var(identifier, value) = &stmt.node {
                 (identifier, value)
             } else {
                 panic!("not a let statement");
             };
-            assert_eq!(&identifier_expr.token.string, test);
+            assert_eq!(&identifier_expr.token.to_string(), test);
             if let Expression::Id(value) = &identifier_expr.as_ref().node {
                 assert_eq!(test, &value);
             } else {
@@ -191,8 +196,8 @@ mod test {
         let tests = vec!["x", "y", "foobar"];
         for (i, test) in tests.iter().enumerate() {
             let stmt = &program[i];
-            if stmt.token.string != "return" {
-                panic!("got: {} instead of return", stmt.token.string);
+            if stmt.token.to_string() != "return" {
+                panic!("got: {} instead of return", stmt.token);
             }
             let return_expr = if let Statement::Return(identifier) = &stmt.node {
                 identifier

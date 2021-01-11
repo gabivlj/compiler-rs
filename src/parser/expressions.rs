@@ -21,9 +21,9 @@ impl<'a> Parser<'a> {
         let node = NodeToken::new(
             Statement::ExpressionStatement(Box::new(expression)),
             // Empty because we wrap the true token inside
-            Token::empty(),
+            TokenType::EOF,
         );
-        while self.is_current(TokenType::Semicolon) {
+        while self.is_current(&&TokenType::Semicolon) {
             self.next_token();
         }
         Ok(node)
@@ -34,7 +34,7 @@ impl<'a> Parser<'a> {
         // Get left expression
         let mut left_expr = self.prefix_expression()?;
         // Iterate and recursive doing pratt
-        while !self.is_current(TokenType::Semicolon) && prec < self.current_precedence() {
+        while !self.is_current(&&TokenType::Semicolon) && prec < self.current_precedence() {
             // Get possible infix, if there is an error, just return itself (ownership)
             let possible_infix = self.infix_expression(left_expr);
             // it's not an infix, stop
@@ -51,25 +51,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_identifier(&mut self) -> Result<NodeToken<Expression>, String> {
-        self.expect_current(TokenType::Ident)?;
-        Ok(NodeToken::new(
-            Expression::Id(self.current_token.string.clone()),
-            self.next_token(),
-        ))
+        if let TokenType::Ident(id) = self.current_token.clone() {
+            Ok(NodeToken::new(Expression::Id(id), self.next_token()))
+        } else {
+            Err("expected identifier".to_string())
+        }
     }
 
     /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         // println!("{:?} -> {:?}", self.current_token, self.peek_token);
-        match self.current_token.token_type {
-            TokenType::Ident => self.parse_identifier(),
-            TokenType::Int => Ok(NodeToken::new(
-                Expression::Number(
-                    self.current_token
-                        .string
-                        .parse::<i64>()
-                        .expect("expected a good number from the lexer"),
-                ),
+        match self.current_token {
+            TokenType::Ident(_) => self.parse_identifier(),
+            TokenType::Int(n) => Ok(NodeToken::new(
+                Expression::Number(n as i64),
                 self.next_token(),
             )),
             TokenType::True => Ok(NodeToken::new(Expression::Boolean(true), self.next_token())),
@@ -101,23 +96,23 @@ impl<'a> Parser<'a> {
 
     fn parse_parameters(&mut self) -> Result<Vec<NodeToken<Expression>>, String> {
         let mut params = vec![];
-        while !self.is_current(TokenType::RParen) && !self.is_current(TokenType::EOF) {
+        while !self.is_current(&TokenType::RParen) && !self.is_current(&TokenType::EOF) {
             let exp = self.parse_expression(Precedence::Lowest)?;
             // println!("{}", exp.str());
             params.push(exp);
-            if self.is_current(TokenType::Comma) && !self.is_peek(TokenType::Comma) {
+            if self.is_current(&TokenType::Comma) && !self.is_peek(&TokenType::Comma) {
                 self.next_token();
-            } else if self.is_current(TokenType::Comma) {
+            } else if self.is_current(&TokenType::Comma) {
                 return Err("unexpected comma".to_string());
             }
         }
-        self.expect_current(TokenType::RParen)?;
+        self.expect_current(&TokenType::RParen)?;
         self.next_token();
         Ok(params)
     }
 
     fn parse_function_expression(&mut self) -> Result<NodeToken<Expression>, String> {
-        assert_eq!(self.current_token.token_type, TokenType::Function);
+        assert_eq!(self.current_token, TokenType::Function);
         let function_token = self.next_token();
         let parameters = self.parse_fn_def_parameters()?;
         let block = self.parse_block_statement()?;
@@ -125,20 +120,28 @@ impl<'a> Parser<'a> {
         Ok(NodeToken::new(func, function_token))
     }
 
+    fn is_identifier_peek(&self) -> bool {
+        if let TokenType::Ident(_) = self.peek_token {
+            true
+        } else {
+            false
+        }
+    }
+
     fn parse_fn_def_parameters(&mut self) -> Result<Vec<NodeToken<Expression>>, String> {
-        self.expect_current(TokenType::LParen)?;
+        self.expect_current(&TokenType::LParen)?;
         self.next_token();
         let mut params = vec![];
-        while !self.is_current(TokenType::RParen) && !self.is_current(TokenType::EOF) {
+        while !self.is_current(&TokenType::RParen) && !self.is_current(&TokenType::EOF) {
             let identifier = self.parse_identifier()?;
             params.push(identifier);
-            if self.is_current(TokenType::Comma) && self.is_peek(TokenType::Ident) {
+            if self.is_current(&TokenType::Comma) && self.is_identifier_peek() {
                 self.next_token();
-            } else if self.is_current(TokenType::Comma) {
+            } else if self.is_current(&TokenType::Comma) {
                 return Err("unexpected comma".to_string());
             }
         }
-        self.expect_current(TokenType::RParen)?;
+        self.expect_current(&TokenType::RParen)?;
         self.next_token();
         Ok(params)
     }
@@ -150,7 +153,7 @@ impl<'a> Parser<'a> {
         &mut self,
         left: NodeToken<Expression>,
     ) -> Result<Result<NodeToken<Expression>, String>, NodeToken<Expression>> {
-        match self.current_token.token_type {
+        match self.current_token {
             TokenType::Minus
             | TokenType::Slash
             | TokenType::GreaterThan
@@ -173,39 +176,35 @@ impl<'a> Parser<'a> {
         let token = self.next_token();
         let right = self.parse_expression(precedence)?;
         Ok(NodeToken::new(
-            Expression::BinaryOp(
-                Box::new(left),
-                Box::new(right),
-                OpType::from(token.string.as_ref()),
-            ),
+            Expression::BinaryOp(Box::new(left), Box::new(right), OpType::from(&token)),
             token,
         ))
     }
 
     fn parse_block_statement(&mut self) -> Result<Vec<NodeToken<Statement>>, String> {
-        self.expect_current(TokenType::LBrace)?;
+        self.expect_current(&TokenType::LBrace)?;
         self.next_token();
         let mut block = vec![];
-        while !self.is_current(TokenType::RBrace) && !self.is_current(TokenType::EOF) {
+        while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
             block.push(self.parse_stmt()?);
         }
-        self.expect_current(TokenType::RBrace)?;
+        self.expect_current(&TokenType::RBrace)?;
         self.next_token();
         Ok(block)
     }
 
     /// parse if statements
     fn parse_if(&mut self) -> Result<NodeToken<Expression>, String> {
-        self.expect_current(TokenType::If)?;
+        self.expect_current(&TokenType::If)?;
         let if_token = self.next_token();
         let condition = self.parse_expression(Precedence::Lowest)?;
         let block = self.parse_block_statement()?;
         let mut wasted_last_else = false;
         let mut ifs = vec![];
         let mut last_else = None;
-        while self.is_current(TokenType::Else) {
+        while self.is_current(&TokenType::Else) {
             self.next_token();
-            if self.is_current(TokenType::If) && !wasted_last_else {
+            if self.is_current(&TokenType::If) && !wasted_last_else {
                 let curr_if = self.parse_if()?;
                 ifs.push(curr_if);
             } else if !wasted_last_else {
@@ -229,7 +228,7 @@ impl<'a> Parser<'a> {
     /// parse ! or - operators
     fn parse_prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         let token = self.next_token();
-        let op = token.string.clone();
+        let op = OpType::from(&token);
         let right = self.parse_expression(Precedence::Prefix)?;
         let expr = NodeToken::new(Expression::PrefixOp(op, Box::new(right)), token);
         Ok(expr)
@@ -237,10 +236,10 @@ impl<'a> Parser<'a> {
 
     /// Parse expressions inside parenthesis
     fn parse_grouped_expression(&mut self) -> Result<NodeToken<Expression>, String> {
-        assert_eq!(self.current_token.token_type, TokenType::LParen);
+        assert_eq!(self.current_token, TokenType::LParen);
         self.next_token();
         let exp = self.parse_expression(Precedence::Lowest);
-        self.expect_current(TokenType::RParen)?;
+        self.expect_current(&TokenType::RParen)?;
         self.next_token();
         exp
     }
@@ -257,11 +256,11 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_precedence(&self) -> Precedence {
-        Parser::get_precedence(&self.peek_token.token_type)
+        Parser::get_precedence(&self.peek_token)
     }
 
     fn current_precedence(&self) -> Precedence {
-        Parser::get_precedence(&self.current_token.token_type)
+        Parser::get_precedence(&self.current_token)
     }
 }
 
@@ -273,7 +272,7 @@ mod test {
     use crate::ast::node::{Expression, NodeToken, OpType, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use crate::token::Token;
+    use crate::token::TokenType;
 
     #[test]
     fn test_parse_function() {
@@ -363,7 +362,6 @@ mod test {
         } else {
             panic!("not a number");
         };
-        assert_eq!(&expected.to_string(), &expr.token.string);
         assert_eq!(value, expected);
     }
 
@@ -385,7 +383,7 @@ mod test {
             panic!("not an identifier");
         };
         assert_eq!(&id, "variable");
-        assert_eq!(token.string, "variable");
+        assert_eq!(format!("{}", token), "variable");
     }
 
     #[test]
@@ -421,8 +419,7 @@ mod test {
             } else {
                 panic!("not a prefix op");
             };
-            assert_eq!(&id, op);
-            assert_eq!(&token.string, op);
+            assert_eq!(&id.to_string(), op);
             test_integer(&expr, *value_test);
         }
     }
@@ -525,7 +522,7 @@ mod test {
 
         for test in input.iter() {
             let program = get_program(test.0);
-            let str = Statement::Program(program).string(&Token::empty());
+            let str = Statement::Program(program).string(&TokenType::EOF);
             assert_eq!(&str, test.1);
         }
     }

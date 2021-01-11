@@ -1,10 +1,12 @@
-#[derive(Debug, PartialEq, Copy, Clone)]
+use std::unimplemented;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     NotEqual,
     Equal,
-    Illegal,
+    Illegal(String),
     EOF,
-    Ident,
+    Ident(String),
     Assign,
     Plus,
     Comma,
@@ -15,7 +17,7 @@ pub enum TokenType {
     RBrace,
     Function,
     Let,
-    Int,
+    Int(u64),
     Bang,
     Asterisk,
     Slash,
@@ -35,25 +37,35 @@ pub struct Token {
     pub string: String,
 }
 
-impl Token {
-    pub fn empty() -> Self {
-        Self {
-            token_type: TokenType::EOF,
-            string: String::with_capacity(0),
-        }
-    }
-
-    pub fn copy(&self) -> Self {
-        Self {
-            string: self.string.clone(),
-            token_type: self.token_type,
-        }
-    }
-
-    pub fn new<S: Into<String>>(string: S, token: TokenType) -> Self {
-        Self {
-            string: string.into(),
-            token_type: token,
+impl std::fmt::Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenType::LParen => write!(f, "("),
+            TokenType::RParen => write!(f, ")"),
+            TokenType::Ident(s) | TokenType::Illegal(s) => write!(f, "{}", s),
+            TokenType::Assign => write!(f, "="),
+            TokenType::Plus => write!(f, "+"),
+            TokenType::LBrace => write!(f, "{{"),
+            TokenType::RBrace => write!(f, "}}"),
+            TokenType::Equal => write!(f, "=="),
+            TokenType::NotEqual => write!(f, "!="),
+            TokenType::Bang => write!(f, "!"),
+            TokenType::Asterisk => write!(f, "*"),
+            TokenType::Comma => write!(f, ","),
+            TokenType::Slash => write!(f, "/"),
+            TokenType::Semicolon => write!(f, ";"),
+            TokenType::Else => write!(f, "else"),
+            TokenType::If => write!(f, "if"),
+            TokenType::True => write!(f, "true"),
+            TokenType::False => write!(f, "false"),
+            TokenType::Minus => write!(f, "-"),
+            TokenType::GreaterThan => write!(f, ">"),
+            TokenType::LessThan => write!(f, "<"),
+            TokenType::EOF => write!(f, ""),
+            TokenType::Return => write!(f, "return"),
+            TokenType::Let => write!(f, "let"),
+            TokenType::Function => write!(f, "fn"),
+            TokenType::Int(u64) => write!(f, "{}", u64),
         }
     }
 }
@@ -61,15 +73,4 @@ impl Token {
 mod test {
     #![allow(unused_imports)]
     use super::{Token, TokenType};
-
-    #[test]
-    fn check_lifetimes() {
-        let token = Token::new("+", TokenType::Plus);
-        let heap_all = String::from("heap allocated as well");
-        let other_token = Token::new(&heap_all, TokenType::Ident);
-        let token_copied = token.copy();
-        let other_token_copied = other_token.copy();
-        assert_eq!(token, token_copied);
-        assert_eq!(other_token, other_token_copied);
-    }
 }

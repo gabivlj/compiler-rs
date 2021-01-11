@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::token::TokenType;
 use std::{boxed::Box, unimplemented};
 
 #[derive(Debug, Clone)]
@@ -10,16 +10,16 @@ pub enum Node {
 
 #[derive(Debug, Clone)]
 pub struct NodeToken<T> {
-    pub token: Token,
+    pub token: TokenType,
     pub node: T,
 }
 
 impl<T: Clone> NodeToken<T> {
-    pub fn new(node: T, token: Token) -> Self {
+    pub fn new(node: T, token: TokenType) -> Self {
         Self { token, node }
     }
 
-    pub fn new_boxed(node: T, token: Token) -> Box<Self> {
+    pub fn new_boxed(node: T, token: TokenType) -> Box<Self> {
         Box::new(Self::new(node, token))
     }
 }
@@ -58,7 +58,7 @@ pub enum Expression {
     /// Almost equal to Var, but instead will override the already declared variable
     Assignment(String, Box<NodeToken<Expression>>),
 
-    PrefixOp(String, Box<NodeToken<Expression>>),
+    PrefixOp(OpType, Box<NodeToken<Expression>>),
 
     Block(Vec<NodeToken<Statement>>),
 
@@ -96,6 +96,7 @@ pub enum OpType {
     Or,
     GreaterThan,
     LessThan,
+    Bang,
 }
 
 impl Node {
@@ -139,20 +140,17 @@ impl Node {
 }
 
 impl Statement {
-    pub fn string(&self, token: &Token) -> String {
+    pub fn string(&self, token: &TokenType) -> String {
         match self {
             Statement::Empty => String::with_capacity(0),
             Statement::Program(tokens) => {
                 tokens.iter().fold(String::new(), |acc, x| acc + &x.str())
             }
-            Statement::Var(identifier, expression) => format!(
-                "{} {} = {};",
-                token.string,
-                identifier.str(),
-                expression.str()
-            ),
+            Statement::Var(identifier, expression) => {
+                format!("{} {} = {};", token, identifier.str(), expression.str())
+            }
             Statement::ExpressionStatement(expr) => expr.str(),
-            Statement::Return(expr) => format!("{} {};", token.string, expr.str()),
+            Statement::Return(expr) => format!("{} {};", token, expr.str()),
             _ => unimplemented!(),
         }
     }
@@ -173,7 +171,7 @@ impl Expression {
         match self {
             Expression::Id(identifier) => identifier.clone(),
             Expression::Number(n) => n.to_string(),
-            Expression::PrefixOp(op, val) => format!("({}{})", op, val.str()),
+            Expression::PrefixOp(op, val) => format!("({}{})", op.to_string(), val.str()),
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
@@ -270,6 +268,7 @@ impl ToString for OpType {
             OpType::NotEqual => "!=".to_string(),
             OpType::GreaterThan => ">".to_string(),
             OpType::LessThan => "<".to_string(),
+            OpType::Bang => "!".to_string(),
         }
     }
 }
@@ -292,6 +291,23 @@ impl From<&str> for OpType {
     }
 }
 
+impl From<&TokenType> for OpType {
+    fn from(value: &TokenType) -> Self {
+        match value {
+            TokenType::Plus => OpType::Add,
+            TokenType::Minus => OpType::Substract,
+            TokenType::Slash => OpType::Divide,
+            TokenType::Asterisk => OpType::Multiply,
+            TokenType::Equal => OpType::Equal,
+            TokenType::NotEqual => OpType::NotEqual,
+            TokenType::GreaterThan => OpType::GreaterThan,
+            TokenType::LessThan => OpType::LessThan,
+            TokenType::Bang => OpType::Bang,
+            _ => panic!("unknown operator {}", value),
+        }
+    }
+}
+
 mod test {
     use crate::ast::node::{Expression, Node, NodeToken, Statement};
     use crate::token::{Token, TokenType};
@@ -301,19 +317,19 @@ mod test {
             Statement::Var(
                 NodeToken::new_boxed(
                     Expression::Id("myVar".to_string()),
-                    Token::new("myVar", TokenType::Ident),
+                    TokenType::Ident("myVar".to_string()),
                 ),
                 NodeToken::new_boxed(
                     Expression::Id("anotherVar".to_string()),
-                    Token::new("anotherVar", TokenType::Ident),
+                    TokenType::Ident("anotherVar".to_string()),
                 ),
             ),
-            Token::new("let", TokenType::Let),
+            TokenType::Let,
         )]);
-        if program.string(&Token::empty()) != "let myVar = anotherVar;" {
+        if program.string(&TokenType::EOF) != "let myVar = anotherVar;" {
             panic!(
                 "program to string wrong. got={}",
-                program.string(&Token::empty())
+                program.string(&TokenType::EOF)
             )
         }
     }

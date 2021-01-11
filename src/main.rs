@@ -6,32 +6,30 @@ fn main() {
     use ast::node::{Statement, Str};
     use lexer::Lexer;
     use parser::Parser;
-    let mut parser = Parser::new(Lexer::new(
-        "
-        if (x == 3) {
-            let x = 0;
-            let z = 0;
-            return x + z;
-        } else if x {
-            return x + !!zzzz;
+    let s = "
+    let fibonacci = fn(x) {
+      if (x == 0) {
+        0
+      } else {
+        if (x == 1) {
+          return 1;
         } else {
-            return f() + fn(x,y) { x + y }(1, 2);
+          fibonacci(x - 1) + fibonacci(x - 2);
         }
-        let x = 3;
-        
-        return if x == 3 {
-            4;
-        } else {
-            3;
-        };
-    ",
-    ));
-    let program = if let Statement::Program(program) = parser.parse_program().unwrap().node {
-        program
-    } else {
-        vec![]
+      }
     };
-    for stmt in program.iter() {
-        println!("{}", stmt.str());
+    fibonacci(35);
+"
+    .repeat(1000);
+    let elapsed = std::time::Instant::now();
+    for i in 0..1000 {
+        let mut l = Lexer::new(&s);
+        loop {
+            if l.next_token() != token::TokenType::EOF {
+            } else {
+                break;
+            }
+        }
     }
+    println!("elapsed: {}", elapsed.elapsed().as_millis());
 }
