@@ -42,7 +42,7 @@ pub enum Expression {
     /// Call is a function call like `f(x)`
     /// - First value is the callee
     /// - Second value are the arguments
-    Call(Box<NodeToken<Expression>>, Vec<Expression>),
+    Call(Box<NodeToken<Expression>>, Vec<NodeToken<Expression>>),
 
     /// If refers to an if node
     If {
@@ -53,7 +53,7 @@ pub enum Expression {
     },
 
     /// FunctionDefinition the parameter list and the Block node
-    FunctionDefinition(String, Vec<NodeToken<Statement>>),
+    FunctionDefinition(Vec<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
 
     /// Almost equal to Var, but instead will override the already declared variable
     Assignment(String, Box<NodeToken<Expression>>),
@@ -158,6 +158,16 @@ impl Statement {
     }
 }
 
+fn parameters_to_string(vec: &Vec<NodeToken<Expression>>) -> String {
+    format!(
+        "({})",
+        vec.iter()
+            .map(|node| node.str())
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
+}
+
 impl Expression {
     pub fn string(&self) -> String {
         match self {
@@ -167,6 +177,15 @@ impl Expression {
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
+            Expression::FunctionDefinition(parameters, block) => format!(
+                "fn {} {{{}}}",
+                parameters_to_string(parameters),
+                block.iter().fold(String::new(), |prev, now| format!(
+                    "{} {}; ",
+                    prev,
+                    now.str()
+                ))
+            ),
             Expression::If {
                 condition,
                 last_else,
