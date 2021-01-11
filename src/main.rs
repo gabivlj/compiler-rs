@@ -18,6 +18,7 @@ fn main() {
             return f() + fn(x,y) { x + y }(1, 2);
         }
         let x = 3;
+        
         return if x == 3 {
             4;
         } else {

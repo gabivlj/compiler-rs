@@ -40,9 +40,6 @@ impl<'a> Parser<'a> {
                 // We map to get the type that we want
                 return stmt.map(|_| NodeToken::new(Statement::Empty, Token::empty()));
             }
-            while self.is_current(TokenType::Semicolon) {
-                self.next_token();
-            }
         }
         Ok(NodeToken::new(
             Statement::Program(statements),
@@ -54,6 +51,13 @@ impl<'a> Parser<'a> {
         match self.current_token.token_type {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
+            TokenType::Ident => {
+                if self.is_peek(TokenType::Assign) {
+                    Err("unimplemented".to_string())
+                } else {
+                    self.parse_expression_statement()
+                }
+            }
             _ => self.parse_expression_statement(),
         }
     }
@@ -61,7 +65,7 @@ impl<'a> Parser<'a> {
     fn parse_return_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
         let exp = self.parse_expression(Precedence::Lowest)?;
-        while self.is_peek(TokenType::Semicolon) {
+        while self.is_current(TokenType::Semicolon) {
             self.next_token();
         }
         Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
@@ -74,7 +78,7 @@ impl<'a> Parser<'a> {
         let name = self.next_token();
         self.next_token();
         let expr = self.parse_expression(Precedence::Lowest)?;
-        while self.is_peek(TokenType::Semicolon) {
+        while self.is_current(TokenType::Semicolon) {
             self.next_token();
         }
         Ok(NodeToken::new(

@@ -47,9 +47,6 @@ impl<'a> Parser<'a> {
             let infix = possible_infix.expect("already checked error")?;
             left_expr = infix;
         }
-        while self.is_current(TokenType::Semicolon) {
-            self.next_token();
-        }
         Ok(left_expr)
     }
 
