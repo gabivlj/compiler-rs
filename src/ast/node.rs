@@ -177,6 +177,7 @@ impl Expression {
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
+            Expression::Call(id, params) => format!("{}{}", id.str(), parameters_to_string(params)),
             Expression::FunctionDefinition(parameters, block) => format!(
                 "fn {} {{{}}}",
                 parameters_to_string(parameters),

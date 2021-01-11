@@ -1,11 +1,11 @@
 use std::unimplemented;
 
-use crate::ast::node::{Expression, NodeToken, OpType, Statement};
+use crate::ast::node::{Expression, NodeToken, OpType, Statement, Str};
 use crate::parser::Parser;
 use crate::token::{Token, TokenType};
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
-enum Precedence {
+pub enum Precedence {
     Lowest = 0,
     Equals = 1,
     LessGreater = 2,
@@ -30,7 +30,7 @@ impl<'a> Parser<'a> {
     }
 
     /// parse expression with pratt's
-    fn parse_expression(&mut self, prec: Precedence) -> Result<NodeToken<Expression>, String> {
+    pub fn parse_expression(&mut self, prec: Precedence) -> Result<NodeToken<Expression>, String> {
         // Get left expression
         let mut left_expr = self.prefix_expression()?;
         // Iterate and recursive doing pratt
@@ -87,6 +87,34 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_fn_call(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        let left_boxed = Box::new(left);
+        let call_token = self.next_token();
+        let params = self.parse_parameters()?;
+        let fn_call = Expression::Call(left_boxed, params);
+        Ok(NodeToken::new(fn_call, call_token))
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<NodeToken<Expression>>, String> {
+        let mut params = vec![];
+        while !self.is_current(TokenType::RParen) && !self.is_current(TokenType::EOF) {
+            let exp = self.parse_expression(Precedence::Lowest)?;
+            // println!("{}", exp.str());
+            params.push(exp);
+            if self.is_current(TokenType::Comma) && !self.is_peek(TokenType::Comma) {
+                self.next_token();
+            } else if self.is_current(TokenType::Comma) {
+                return Err("unexpected comma".to_string());
+            }
+        }
+        self.expect_current(TokenType::RParen)?;
+        self.next_token();
+        Ok(params)
+    }
+
     fn parse_function_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         assert_eq!(self.current_token.token_type, TokenType::Function);
         let function_token = self.next_token();
@@ -103,9 +131,7 @@ impl<'a> Parser<'a> {
         while !self.is_current(TokenType::RParen) && !self.is_current(TokenType::EOF) {
             let identifier = self.parse_identifier()?;
             params.push(identifier);
-            if self.is_current(TokenType::Comma)
-                && (self.is_peek(TokenType::Ident) || self.is_peek(TokenType::RParen))
-            {
+            if self.is_current(TokenType::Comma) && self.is_peek(TokenType::Ident) {
                 self.next_token();
             } else if self.is_current(TokenType::Comma) {
                 return Err("unexpected comma".to_string());
@@ -132,6 +158,7 @@ impl<'a> Parser<'a> {
             | TokenType::Asterisk
             | TokenType::Equal
             | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
+            TokenType::LParen => Ok(self.parse_fn_call(left)),
             _ => Err(left),
         }
     }
@@ -261,6 +288,10 @@ mod test {
             (
                 "fn(){}",
                 "fn () {}"
+            ),
+            (
+                "let f = fn(){}",
+                "let f = fn () {};"
             )
         ];
         for test in input.iter() {
@@ -288,7 +319,7 @@ mod test {
             }
         ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
         ("
-            if (x == true) {
+            let ifs = if (x == true) {
                 1 + 2;
                 if (x == false) {
                     3 + 3;
@@ -304,7 +335,7 @@ mod test {
             } else {
                 3 + 5
             }
-        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); } else { 3; }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ", "let ifs = if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); } else { 3; }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); };"),
         ];
         for test in input.iter() {
             let mut program = get_program(test.0);
@@ -479,9 +510,15 @@ mod test {
             ("true", "true"),
             ("!!!!true", "(!(!(!(!true))))"),
             ("(5 + 5) / 2", "((5 + 5) / 2)"),
-            // ("2 / (5 + 5)", "(2 / (5 + 5))"),
-            // ("-(5 + 5)", "(-(5 + 5))"),
-            // ("!(true == true)", "(!(true == true))"),
+            ("add(x, y)", "add(x, y)"),
+            (
+                "let added = add(x, y, fn(x,y,y){ 5; }, if x == y {},) + 10 / 30 * f()",
+                "let added = (add(x, y, fn (x, y, y) { 5; }, if (x == y) { }) + ((10 / 30) * f()));",
+            ),
+            ("2 / (5 + 5)", "(2 / (5 + 5))"),
+            ("-(5 + 5)", "(-(5 + 5))"),
+            ("!(true == true)", "(!(true == true))"),
+            ("!(true == true)", "(!(true == true))"),
         ];
 
         for test in input.iter() {

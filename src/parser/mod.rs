@@ -5,6 +5,8 @@ use std::unimplemented;
 use crate::ast::node::{Expression, Node, NodeToken, Statement};
 use crate::lexer::Lexer;
 use crate::token::{Token, TokenType};
+use expressions::Precedence;
+
 pub struct Parser<'a> {
     current_token: Token,
     lexer: Lexer<'a>,
@@ -73,17 +75,12 @@ impl<'a> Parser<'a> {
         self.expect_current(TokenType::Ident)?;
         self.expect_peek(TokenType::Assign)?;
         let name = self.next_token();
-        // ignore value atm
-        let value = self.next_token();
-        // TODO: Parse expressions
-        while !self.is_current(TokenType::Semicolon) {
-            self.next_token();
-        }
+        self.next_token();
+        let expr = self.parse_expression(Precedence::Lowest)?;
         Ok(NodeToken::new(
             Statement::Var(
-                // TODO: Add here the parsed expressions
                 NodeToken::new_boxed(Expression::Id(name.string.clone()), name),
-                NodeToken::new_boxed(Expression::Id(String::with_capacity(0)), value),
+                Box::new(expr),
             ),
             token,
         ))
