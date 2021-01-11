@@ -40,7 +40,9 @@ impl<'a> Parser<'a> {
                 // We map to get the type that we want
                 return stmt.map(|_| NodeToken::new(Statement::Empty, Token::empty()));
             }
-            self.next_token();
+            while self.is_current(TokenType::Semicolon) {
+                self.next_token();
+            }
         }
         Ok(NodeToken::new(
             Statement::Program(statements),
@@ -58,16 +60,11 @@ impl<'a> Parser<'a> {
 
     fn parse_return_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
-        while !self.is_current(TokenType::Semicolon) {
+        let exp = self.parse_expression(Precedence::Lowest)?;
+        while self.is_peek(TokenType::Semicolon) {
             self.next_token();
         }
-        Ok(NodeToken::new(
-            Statement::Return(Box::new(NodeToken::new(
-                Expression::Number(1),
-                Token::empty(),
-            ))),
-            token,
-        ))
+        Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
     }
 
     fn parse_let_statement(&mut self) -> Result<NodeToken<Statement>, String> {
@@ -77,6 +74,9 @@ impl<'a> Parser<'a> {
         let name = self.next_token();
         self.next_token();
         let expr = self.parse_expression(Precedence::Lowest)?;
+        while self.is_peek(TokenType::Semicolon) {
+            self.next_token();
+        }
         Ok(NodeToken::new(
             Statement::Var(
                 NodeToken::new_boxed(Expression::Id(name.string.clone()), name),
@@ -126,9 +126,9 @@ mod test {
     use crate::{ast::node::Expression, lexer::Lexer};
     #[test]
     fn test_let_stmt() {
-        let input = "let x = 5;
-        let y = 10;
-        let foobar = 500343;";
+        let input = "let x = 5;;;;;;
+        let y = 10;;;;;;
+        let foobar = 500343;;;;;";
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
@@ -139,6 +139,7 @@ mod test {
             panic!("not a program");
         };
         if program.len() != 3 {
+            println!("{:?}", program);
             panic!("number of statements is {} instead of 3", program.len());
         }
         println!("{:?}", program);

@@ -23,7 +23,7 @@ impl<'a> Parser<'a> {
             // Empty because we wrap the true token inside
             Token::empty(),
         );
-        if self.is_current(TokenType::Semicolon) {
+        while self.is_current(TokenType::Semicolon) {
             self.next_token();
         }
         Ok(node)
@@ -47,6 +47,9 @@ impl<'a> Parser<'a> {
             let infix = possible_infix.expect("already checked error")?;
             left_expr = infix;
         }
+        while self.is_current(TokenType::Semicolon) {
+            self.next_token();
+        }
         Ok(left_expr)
     }
 
@@ -60,6 +63,7 @@ impl<'a> Parser<'a> {
 
     /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
+        // println!("{:?} -> {:?}", self.current_token, self.peek_token);
         match self.current_token.token_type {
             TokenType::Ident => self.parse_identifier(),
             TokenType::Int => Ok(NodeToken::new(
@@ -186,7 +190,7 @@ impl<'a> Parser<'a> {
         self.next_token();
         let mut block = vec![];
         while !self.is_current(TokenType::RBrace) && !self.is_current(TokenType::EOF) {
-            block.push(self.parse_expression_statement()?);
+            block.push(self.parse_stmt()?);
         }
         self.expect_current(TokenType::RBrace)?;
         self.next_token();
@@ -279,11 +283,11 @@ mod test {
         let input = [
             (
                 "fn(x, y) { x + y; y + z; if x == y { 1 } };",
-                "fn (x, y) { (x + y);  (y + z);  if (x == y) { 1; }; }",
+                "fn (x, y) { (x + y)  (y + z)  if (x == y) { 1 } }",
             ),
             (
                 "fn(x, y) { x + y; y + z; if x == y { 1 } else if !!!!!!!---true { 5; } else { false; } };",
-                "fn (x, y) { (x + y);  (y + z);  if (x == y) { 1; } else if (!(!(!(!(!(!(!(-(-(-true)))))))))) { 5; } else { false; }; }",
+                "fn (x, y) { (x + y)  (y + z)  if (x == y) { 1 } else if (!(!(!(!(!(!(!(-(-(-true)))))))))) { 5 } else { false } }",
             ),
             (
                 "fn(){}",
@@ -304,6 +308,7 @@ mod test {
     #[test]
     fn test_if() {
         let input = [
+            ("return if 1 == 2 { 1 } else { 2 }", "return if (1 == 2) { 1 } else { 2 };"),
             ("
             if (x == true) {
                 1 + 2;
@@ -317,7 +322,7 @@ mod test {
             } else {
                 3 + 5
             }
-        ", "if (x == true) { (1 + 2); if (x == false) { (3 + 3); }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); }"),
+        ", "if (x == true) { (1 + 2) if (x == false) { (3 + 3) } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) }"),
         ("
             let ifs = if (x == true) {
                 1 + 2;
@@ -335,7 +340,7 @@ mod test {
             } else {
                 3 + 5
             }
-        ", "let ifs = if (x == true) { (1 + 2); if (x == false) { (3 + 3); (3 * 3); (3 / 3); } else { 3; }; } else if (1 + 3) { 3; } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)); } else { (3 + 5); };"),
+        ", "let ifs = if (x == true) { (1 + 2) if (x == false) { (3 + 3) (3 * 3) (3 / 3) } else { 3 } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) };"),
         ];
         for test in input.iter() {
             let mut program = get_program(test.0);
@@ -513,7 +518,7 @@ mod test {
             ("add(x, y)", "add(x, y)"),
             (
                 "let added = add(x, y, fn(x,y,y){ 5; }, if x == y {},) + 10 / 30 * f()",
-                "let added = (add(x, y, fn (x, y, y) { 5; }, if (x == y) { }) + ((10 / 30) * f()));",
+                "let added = (add(x, y, fn (x, y, y) { 5 }, if (x == y) { }) + ((10 / 30) * f()));",
             ),
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),

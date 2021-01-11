@@ -182,7 +182,7 @@ impl Expression {
                 "fn {} {{{}}}",
                 parameters_to_string(parameters),
                 block.iter().fold(String::new(), |prev, now| format!(
-                    "{} {}; ",
+                    "{} {} ",
                     prev,
                     now.str()
                 ))
@@ -203,7 +203,7 @@ impl Expression {
                             .unwrap()
                             .iter()
                             .fold(String::new(), |prev, now| {
-                                format!("{} {}; ", prev, now.str())
+                                format!("{} {} ", prev, now.str())
                             })
                     )
                 };
@@ -221,9 +221,9 @@ impl Expression {
                             })
                     )
                 };
-                let bl_str = block.iter().fold(String::new(), |prev, now| {
-                    format!("{}{}; ", prev, now.str())
-                });
+                let bl_str = block
+                    .iter()
+                    .fold(String::new(), |prev, now| format!("{}{} ", prev, now.str()));
                 format!(
                     "{} {} {{ {}}}{}{}",
                     "if",
