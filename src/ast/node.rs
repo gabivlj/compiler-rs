@@ -2,13 +2,6 @@ use crate::token::TokenType;
 use std::{boxed::Box, unimplemented};
 
 #[derive(Debug, Clone)]
-/// Node represents a AST node. We intend this node to fill 32 bytes in memory maximum everytime
-pub enum Node {
-    Expression(Expression),
-    Statement(Statement),
-}
-
-#[derive(Debug, Clone)]
 pub struct NodeToken<T> {
     pub token: TokenType,
     pub node: T,
@@ -101,46 +94,6 @@ pub enum OpType {
     Bang,
 }
 
-impl Node {
-    // pub fn token_literal<'a>(&'a self) -> &'a Token {
-    //     match &self {
-    //         Node::Expression { token, expr: _ } => token,
-    //         Node::Statement {
-    //             token,
-    //             statement: _,
-    //         } => token,
-    //     }
-    // }
-
-    pub fn get_statement(self) -> Statement {
-        match self {
-            Node::Expression(_) => panic!("not an statement"),
-            Node::Statement(statement) => statement,
-        }
-    }
-
-    pub fn get_statement_ref<'a>(&'a self) -> &'a Statement {
-        match self {
-            Node::Expression(_) => panic!("not an statement"),
-            Node::Statement(statement) => statement,
-        }
-    }
-
-    pub fn get_expression(self) -> Expression {
-        match self {
-            Node::Expression(expr) => expr,
-            Node::Statement(_) => panic!("not an expression"),
-        }
-    }
-
-    pub fn get_expression_ref<'a>(&'a self) -> &'a Expression {
-        match self {
-            Node::Expression(expr) => expr,
-            Node::Statement(_) => panic!("not an expression"),
-        }
-    }
-}
-
 impl Statement {
     pub fn string(&self, token: &TokenType) -> String {
         match self {
@@ -153,7 +106,14 @@ impl Statement {
             }
             Statement::ExpressionStatement(expr) => expr.str(),
             Statement::Return(expr) => format!("{} {};", token, expr.str()),
-            _ => unimplemented!(),
+            Statement::While(condition, block) => format!(
+                "{} {} {{{}}}",
+                token,
+                condition.str(),
+                block
+                    .iter()
+                    .fold(String::new(), |prev, now| format!("{} {}", prev, now.str()))
+            ),
         }
     }
 }
@@ -311,8 +271,11 @@ impl From<&TokenType> for OpType {
 }
 
 mod test {
-    use crate::ast::node::{Expression, Node, NodeToken, Statement};
+    #[allow(unused_imports)]
+    use crate::ast::node::{Expression, NodeToken, Statement};
+    #[allow(unused_imports)]
     use crate::token::{Token, TokenType};
+    #[allow(unused_imports)]
     use std::borrow::Cow;
     #[test]
     fn check_string() {

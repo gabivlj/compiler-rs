@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::token::{Token, TokenType};
+use crate::token::TokenType;
 use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
@@ -42,6 +42,7 @@ impl<'a> Lexer<'a> {
             "false" => TokenType::False,
             "return" => TokenType::Return,
             "else" => TokenType::Else,
+            "for" => TokenType::For,
             _ => TokenType::Ident(Cow::Borrowed(string)),
         }
     }

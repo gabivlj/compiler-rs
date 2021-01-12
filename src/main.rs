@@ -11,7 +11,6 @@ use jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() {
-    use ast::node::{Statement, Str};
     use lexer::Lexer;
     use parser::Parser;
     let s = "
@@ -30,8 +29,8 @@ fn main() {
 "
     .repeat(1000);
     let elapsed = std::time::Instant::now();
-    for i in 0..1000 {
-        let mut l = Lexer::new(&s);
+    for _ in 0..100 {
+        let l = Lexer::new(&s);
         let p = Parser::new(l).parse_program();
         p.unwrap();
     }

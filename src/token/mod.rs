@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::unimplemented;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
@@ -30,6 +29,7 @@ pub enum TokenType {
     Return,
     True,
     False,
+    For,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -67,6 +67,7 @@ impl std::fmt::Display for TokenType {
             TokenType::Return => write!(f, "return"),
             TokenType::Let => write!(f, "let"),
             TokenType::Function => write!(f, "fn"),
+            TokenType::For => write!(f, "for"),
             TokenType::Int(u64) => write!(f, "{}", u64),
         }
     }

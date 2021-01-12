@@ -1,8 +1,6 @@
-use std::unimplemented;
-
-use crate::ast::node::{Expression, NodeToken, OpType, Statement, Str};
+use crate::ast::node::{Expression, NodeToken, OpType, Statement};
 use crate::parser::Parser;
-use crate::token::{Token, TokenType};
+use crate::token::TokenType;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
@@ -181,7 +179,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_block_statement(&mut self) -> Result<Vec<NodeToken<Statement>>, String> {
+    pub fn parse_block_statement(&mut self) -> Result<Vec<NodeToken<Statement>>, String> {
         self.expect_current(&TokenType::LBrace)?;
         self.next_token();
         let mut block = vec![];
@@ -255,6 +253,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn peek_precedence(&self) -> Precedence {
         Parser::get_precedence(&self.peek_token)
     }
@@ -339,7 +338,7 @@ mod test {
         ", "let ifs = if (x == true) { (1 + 2) if (x == false) { (3 + 3) (3 * 3) (3 / 3) } else { 3 } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) };"),
         ];
         for test in input.iter() {
-            let mut program = get_program(test.0);
+            let program = get_program(test.0);
             assert_eq!(program.len(), 1);
             assert_eq!(test.1, program[0].str());
         }
@@ -368,7 +367,6 @@ mod test {
     #[test]
     fn test_id() {
         let input = "variable";
-
         let mut program = get_program(input);
         assert_eq!(program.len(), 1);
         let stmt =

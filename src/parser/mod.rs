@@ -1,10 +1,8 @@
 mod expressions;
 
-use std::unimplemented;
-
-use crate::ast::node::{Expression, Node, NodeToken, Statement};
+use crate::ast::node::{NodeToken, Statement};
 use crate::lexer::Lexer;
-use crate::token::{Token, TokenType};
+use crate::token::TokenType;
 use expressions::Precedence;
 
 pub struct Parser<'a> {
@@ -51,6 +49,7 @@ impl<'a> Parser<'a> {
         match self.current_token {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
+            TokenType::For => self.parse_for_statement(),
             TokenType::Ident(_) => {
                 if self.is_peek(&TokenType::Assign) {
                     Err("unimplemented".to_string())
@@ -62,12 +61,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_for_statement(&mut self) -> Result<NodeToken<Statement>, String> {
+        self.expect_current(&TokenType::For)?;
+        let for_token = self.next_token();
+        let condition = self.parse_expression(Precedence::Lowest)?;
+        let block = self.parse_block_statement()?;
+        let for_stmt = Statement::While(Box::new(condition), block);
+        self.skip_semicolons();
+        Ok(NodeToken::new(for_stmt, for_token))
+    }
+
     fn parse_return_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
         let exp = self.parse_expression(Precedence::Lowest)?;
-        while self.is_current(&TokenType::Semicolon) {
-            self.next_token();
-        }
+        self.skip_semicolons();
         Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
     }
 
@@ -87,6 +94,12 @@ impl<'a> Parser<'a> {
             ))
         } else {
             Err("expected identifier".to_string())
+        }
+    }
+
+    fn skip_semicolons(&mut self) {
+        while self.is_current(&TokenType::Semicolon) {
+            self.next_token();
         }
     }
 }
@@ -124,12 +137,42 @@ impl<'a> Parser<'a> {
 }
 
 mod test {
-    use core::panic;
-
-    use crate::ast::node::{Expression, Statement};
+    #![allow(unused_imports)]
+    use crate::ast::node::{Expression, NodeToken, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::TokenType;
+    use core::panic;
+    fn get_program(input: &str) -> Vec<NodeToken<Statement>> {
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+        let program = if let Statement::Program(stmts) = parser.parse_program().unwrap().node {
+            stmts
+        } else {
+            panic!("not a program")
+        };
+        program
+    }
+
+    #[test]
+    fn test_parse_for_loops() {
+        let input = [
+            (
+                "for true { x + y; y + z; if x == y { 1 } };",
+                "for true { (x + y) (y + z) if (x == y) { 1 }}",
+            ),
+            (
+                "for true { for true+false > 0 { x + y; y + z; if x == y { 1 } } };",
+                "for true { for ((true + false) > 0) { (x + y) (y + z) if (x == y) { 1 }}}",
+            ),
+        ];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            assert_eq!(program[0].str(), test.1);
+        }
+    }
+
     #[test]
     fn test_let_stmt() {
         let input = "let x = 5;;;;;;
@@ -186,12 +229,12 @@ mod test {
         println!("{:?}", program);
         // Expected identifiers, later on we will add expected value as pairs
         let tests = vec!["x", "y", "foobar"];
-        for (i, test) in tests.iter().enumerate() {
+        for (i, _) in tests.iter().enumerate() {
             let stmt = &program[i];
             if stmt.token.to_string() != "return" {
                 panic!("got: {} instead of return", stmt.token);
             }
-            let return_expr = if let Statement::Return(identifier) = &stmt.node {
+            let _ = if let Statement::Return(identifier) = &stmt.node {
                 identifier
             } else {
                 panic!("not a return statement");
