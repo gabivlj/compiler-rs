@@ -58,16 +58,20 @@ pub enum Expression {
     Block(Vec<NodeToken<Statement>>),
 
     Boolean(bool),
+
+    Struct(Vec<(String, String)>),
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
+    Type(String, NodeToken<Expression>),
+
     /// While contains the conditional expr that keeps the loop going and
     /// the block of code
     While(Box<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
 
-    /// Var contains the variable name and the expression value that is assigned to
-    Var(Cow<'static, str>, Box<NodeToken<Expression>>),
+    /// Var contains the variable name and the expression value that is assigned to and the type
+    Var(Cow<'static, str>, Box<NodeToken<Expression>>, String),
 
     /// Return represents a return statement
     Return(Box<NodeToken<Expression>>),
@@ -101,9 +105,13 @@ impl Statement {
             Statement::Program(tokens) => {
                 tokens.iter().fold(String::new(), |acc, x| acc + &x.str())
             }
-            Statement::Var(identifier, expression) => {
-                format!("{} {} = {};", token, identifier, expression.str())
-            }
+            Statement::Var(identifier, expression, type_of_variable) => format!(
+                "{} {}: {} = {};",
+                token,
+                identifier,
+                type_of_variable,
+                expression.str()
+            ),
             Statement::ExpressionStatement(expr) => expr.str(),
             Statement::Return(expr) => format!("{} {};", token, expr.str()),
             Statement::While(condition, block) => format!(
@@ -114,6 +122,7 @@ impl Statement {
                     .iter()
                     .fold(String::new(), |prev, now| format!("{} {}", prev, now.str()))
             ),
+            _ => String::with_capacity(0),
         }
     }
 }
@@ -286,10 +295,11 @@ mod test {
                     Expression::Id(Cow::Borrowed("anotherVar")),
                     TokenType::Ident(Cow::Borrowed("anotherVar")),
                 ),
+                "int".to_string(),
             ),
             TokenType::Let,
         )]);
-        if program.string(&TokenType::EOF) != "let myVar = anotherVar;" {
+        if program.string(&TokenType::EOF) != "let myVar: int = anotherVar;" {
             panic!(
                 "program to string wrong. got={}",
                 program.string(&TokenType::EOF)

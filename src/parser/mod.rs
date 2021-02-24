@@ -78,10 +78,19 @@ impl<'a> Parser<'a> {
         Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
     }
 
+    // let_stm ::= 'let' <identifier> ':' <identifier> '=' <expression> [';']*
     fn parse_let_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
-        self.expect_peek(&TokenType::Assign)?;
+        self.expect_peek(&TokenType::DoubleDot)?;
         let name = self.next_token();
+        self.next_token();
+        self.expect_peek(&TokenType::Assign)?;
+        let type_token = self.next_token();
+        let type_string = if let TokenType::Ident(s) = type_token {
+            s.as_ref().to_string()
+        } else {
+            return Err("expected an identifier on let statement".to_string());
+        };
         if let TokenType::Ident(name_s) = name {
             self.next_token();
             let expr = self.parse_expression(Precedence::Lowest)?;
@@ -89,7 +98,7 @@ impl<'a> Parser<'a> {
                 self.next_token();
             }
             Ok(NodeToken::new(
-                Statement::Var(name_s, Box::new(expr)),
+                Statement::Var(name_s, Box::new(expr), type_string),
                 token,
             ))
         } else {
@@ -138,11 +147,13 @@ impl<'a> Parser<'a> {
 
 mod test {
     #![allow(unused_imports)]
+    #![allow(dead_code)]
     use crate::ast::node::{Expression, NodeToken, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::TokenType;
     use core::panic;
+
     fn get_program(input: &str) -> Vec<NodeToken<Statement>> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
@@ -175,9 +186,9 @@ mod test {
 
     #[test]
     fn test_let_stmt() {
-        let input = "let x = 5;;;;;;
-        let y = 10;;;;;;
-        let foobar = 500343;;;;;";
+        let input = "let x: string = 5;;;;;;
+        let y: int = 10;;;;;;
+        let foobar: thing = 500343;;;;;";
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = parser.parse_program();
@@ -199,7 +210,7 @@ mod test {
             if stmt.token != TokenType::Let {
                 panic!("got: {} instead of let", stmt.token);
             }
-            let (identifier_expr, _) = if let Statement::Var(identifier, value) = &stmt.node {
+            let (identifier_expr, _) = if let Statement::Var(identifier, value, _) = &stmt.node {
                 (identifier, value)
             } else {
                 panic!("not a let statement");

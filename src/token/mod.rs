@@ -30,6 +30,9 @@ pub enum TokenType {
     True,
     False,
     For,
+    Struct,
+    Type,
+    DoubleDot,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -56,6 +59,7 @@ impl std::fmt::Display for TokenType {
             TokenType::Comma => write!(f, ","),
             TokenType::Slash => write!(f, "/"),
             TokenType::Semicolon => write!(f, ";"),
+            TokenType::DoubleDot => write!(f, ":"),
             TokenType::Else => write!(f, "else"),
             TokenType::If => write!(f, "if"),
             TokenType::True => write!(f, "true"),
@@ -69,6 +73,8 @@ impl std::fmt::Display for TokenType {
             TokenType::Function => write!(f, "fn"),
             TokenType::For => write!(f, "for"),
             TokenType::Int(u64) => write!(f, "{}", u64),
+            TokenType::Struct => write!(f, "struct"),
+            TokenType::Type => write!(f, "type"),
         }
     }
 }

@@ -43,6 +43,8 @@ impl<'a> Lexer<'a> {
             "return" => TokenType::Return,
             "else" => TokenType::Else,
             "for" => TokenType::For,
+            "struct" => TokenType::Struct,
+            "type" => TokenType::Type,
             _ => TokenType::Ident(Cow::Borrowed(string)),
         }
     }
@@ -89,6 +91,7 @@ impl<'a> Lexer<'a> {
         // go to the next character so we can peek in internal logic
         self.next();
         match c {
+            ':' => TokenType::DoubleDot,
             // Single tokens
             ';' => TokenType::Semicolon,
             '(' => TokenType::LParen,

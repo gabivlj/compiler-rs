@@ -289,8 +289,8 @@ mod test {
                 "fn () {}"
             ),
             (
-                "let f = fn(){}",
-                "let f = fn () {};"
+                "let f: int = fn(){}",
+                "let f: int = fn () {};"
             )
         ];
         for test in input.iter() {
@@ -319,7 +319,7 @@ mod test {
             }
         ", "if (x == true) { (1 + 2) if (x == false) { (3 + 3) } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) }"),
         ("
-            let ifs = if (x == true) {
+            let ifs: int = if (x == true) {
                 1 + 2;
                 if (x == false) {
                     3 + 3;
@@ -335,7 +335,7 @@ mod test {
             } else {
                 3 + 5
             }
-        ", "let ifs = if (x == true) { (1 + 2) if (x == false) { (3 + 3) (3 * 3) (3 / 3) } else { 3 } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) };"),
+        ", "let ifs: int = if (x == true) { (1 + 2) if (x == false) { (3 + 3) (3 * 3) (3 / 3) } else { 3 } } else if (1 + 3) { 3 } else if (!(!(!(!(!(-(-(-(1 + 3))))))))) { (1992192 + (33 * 3)) } else { (3 + 5) };"),
         ];
         for test in input.iter() {
             let program = get_program(test.0);
@@ -509,8 +509,8 @@ mod test {
             ("(5 + 5) / 2", "((5 + 5) / 2)"),
             ("add(x, y)", "add(x, y)"),
             (
-                "let added = add(x, y, fn(x,y,y){ 5; }, if x == y {},) + 10 / 30 * f()",
-                "let added = (add(x, y, fn (x, y, y) { 5 }, if (x == y) { }) + ((10 / 30) * f()));",
+                "let added: int = add(x, y, fn(x,y,y){ 5; }, if x == y {},) + 10 / 30 * f()",
+                "let added: int = (add(x, y, fn (x, y, y) { 5 }, if (x == y) { }) + ((10 / 30) * f()));",
             ),
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),

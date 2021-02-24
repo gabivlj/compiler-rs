@@ -1,6 +1,10 @@
+#![feature(const_in_array_repeat_expressions)]
+
 pub mod ast;
+pub mod hash_undo;
 pub mod lexer;
 pub mod parser;
+pub mod semantic;
 pub mod token;
 
 #[cfg(not(target_env = "msvc"))]
