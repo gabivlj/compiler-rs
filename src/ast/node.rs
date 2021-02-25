@@ -122,6 +122,7 @@ impl Statement {
                     .iter()
                     .fold(String::new(), |prev, now| format!("{} {}", prev, now.str()))
             ),
+            Statement::Type(name, type_expr) => format!("type {} = {};", name, type_expr.str()),
             _ => String::with_capacity(0),
         }
     }
@@ -203,6 +204,12 @@ impl Expression {
                 )
             }
             Expression::Boolean(bool) => format!("{}", bool),
+            Expression::Struct(pairs) => {
+                let pairs_str = pairs.iter().fold(String::new(), |prev, now| {
+                    format!("{}{}: {}; ", prev, now.0, now.1)
+                });
+                format!("{{ {}}}", pairs_str)
+            }
             _ => unimplemented!(),
         }
     }

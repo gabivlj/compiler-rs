@@ -1,6 +1,8 @@
 mod expressions;
 
-use crate::ast::node::{NodeToken, Statement};
+use std::{mem::uninitialized, unimplemented};
+
+use crate::ast::node::{Expression, NodeToken, Statement};
 use crate::lexer::Lexer;
 use crate::token::TokenType;
 use expressions::Precedence;
@@ -45,11 +47,80 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    // pairs ::= [<identifier> ':' <identifier> [';']+ ]+
+    // consumes the last brace
+    fn parse_record_pairs(&mut self) -> Result<Vec<(String, String)>, String> {
+        let mut pairs = Vec::new();
+        while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
+            let identifier = self.next_token();
+            self.expect_current(&TokenType::DoubleDot)?;
+            self.next_token();
+            let type_identifier = self.next_token();
+            self.expect_current(&TokenType::Semicolon)?;
+            self.skip_semicolons();
+            if let TokenType::Ident(identifier_string_left) = &identifier {
+                if let TokenType::Ident(identifier_string_right) = &type_identifier {
+                    pairs.push((
+                        identifier_string_left.to_string(),
+                        identifier_string_right.to_string(),
+                    ));
+                    continue;
+                }
+            }
+            return Err("expected a identifier on type declaration".to_string());
+        }
+        if pairs.len() <= 0 {
+            return Err("needs at least minimum 1 pair on type expression".to_string());
+        }
+        self.expect_current(&TokenType::RBrace)?;
+        self.next_token();
+        Ok(pairs)
+    }
+
+    // ::= <identifier> |  ('{' <pairs> '}' )
+    fn parse_type_expression(&mut self) -> Result<NodeToken<Expression>, String> {
+        self.expect_current(&TokenType::Assign)?;
+        self.next_token();
+        let possible_identifier = self.next_token();
+        if let TokenType::Ident(identifier) = &possible_identifier {
+            Ok(NodeToken::new(
+                Expression::Id(identifier.clone()),
+                possible_identifier,
+            ))
+        } else if let TokenType::LBrace = &possible_identifier {
+            let type_pairs = self.parse_record_pairs()?;
+            Ok(NodeToken::new(
+                Expression::Struct(type_pairs),
+                possible_identifier,
+            ))
+        } else {
+            Err("Unexpected token on type expression".to_string())
+        }
+    }
+
+    // parses the following gramatical rule
+    // type_stm ::= 'type' <identifier> '=' <identifier> | ('{' <pairs> '}' )
+    fn parse_type(&mut self) -> Result<NodeToken<Statement>, String> {
+        let type_token = self.next_token();
+        let token_ident = self.next_token();
+        if let TokenType::Ident(identifier) = token_ident {
+            let expression_type = self.parse_type_expression()?;
+            self.skip_semicolons();
+            Ok(NodeToken::new(
+                Statement::Type(identifier.to_string(), expression_type),
+                type_token,
+            ))
+        } else {
+            Err("expected identifier on type declaration".to_string())
+        }
+    }
+
     fn parse_stmt(&mut self) -> Result<NodeToken<Statement>, String> {
         match self.current_token {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
             TokenType::For => self.parse_for_statement(),
+            TokenType::Type => self.parse_type(),
             TokenType::Ident(_) => {
                 if self.is_peek(&TokenType::Assign) {
                     Err("unimplemented".to_string())
@@ -176,6 +247,30 @@ mod test {
                 "for true { for true+false > 0 { x + y; y + z; if x == y { 1 } } };",
                 "for true { for ((true + false) > 0) { (x + y) (y + z) if (x == y) { 1 }}}",
             ),
+        ];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            assert_eq!(program[0].str(), test.1);
+        }
+    }
+
+    #[test]
+    fn test_parse_type_loops() {
+        let input = [
+            (
+                "type Integer = { thing: int; thing02: int; whatever: String; }; ",
+                "type Integer = { thing: int; thing02: int; whatever: String; };",
+            ),
+            (
+                "type Integer = 
+                    
+                    {
+                             thing: int;;;;;;;;
+                                    ;;;;; thing02: int; whatever: String;;;;; } ",
+                "type Integer = { thing: int; thing02: int; whatever: String; };",
+            ),
+            ("type Integer = int;", "type Integer = int;"),
         ];
         for test in input.iter() {
             let program = get_program(test.0);
