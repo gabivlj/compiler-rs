@@ -1,4 +1,4 @@
-#![feature(const_in_array_repeat_expressions)]
+#![feature(maybe_uninit_uninit_array)]
 
 pub mod ast;
 pub mod hash_undo;

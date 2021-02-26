@@ -1,6 +1,8 @@
+use std::borrow::BorrowMut;
 use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
+use std::{borrow::Borrow, mem::MaybeUninit};
 use std::{borrow::Cow, cmp::PartialEq};
-use std::{hash::Hasher, marker::PhantomData};
 
 struct Node<'a, T, S>
 where
@@ -11,11 +13,13 @@ where
     next: Option<Box<Node<'a, T, S>>>,
 }
 
+type NodePtr<'a, S, T> = Option<Box<Node<'a, S, T>>>;
+
 pub struct HashUndo<'a, T, S>
 where
     T: std::hash::Hash + 'static + ToOwned,
 {
-    map: [Option<Box<Node<'a, S, T>>>; 501],
+    map: [NodePtr<'a, S, T>; 501],
     undo_stack: Vec<usize>,
 }
 
@@ -25,10 +29,15 @@ where
     S: PartialEq,
 {
     pub fn new() -> Self {
-        Self {
-            map: [None; 501],
-            undo_stack: Vec::with_capacity(50),
+        let mut uninit_arr: [MaybeUninit<NodePtr<'hash, S, T>>; 501] = MaybeUninit::uninit_array();
+        for element in uninit_arr.iter_mut() {
+            *element = MaybeUninit::new(None);
         }
+        let me = Self {
+            map: unsafe { std::mem::transmute(uninit_arr) },
+            undo_stack: Vec::with_capacity(50),
+        };
+        me
     }
 
     pub fn add_ref(&mut self, key_val: &'hash T, to_add: S) {
