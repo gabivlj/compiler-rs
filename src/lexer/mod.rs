@@ -77,6 +77,25 @@ impl<'a> Lexer<'a> {
     }
 
     #[inline]
+    /// read_identifier reads an entire string, and returns the string with the starting_char.
+    /// `starting_char` parameter is really useful because we can't go back in the iterator
+    fn read_quotes(&mut self) -> Option<&'static str> {
+        let start = self.position;
+        while self.char() != '\0' {
+            if self.char() == '"' {
+                break;
+            }
+            self.next();
+        }
+        if self.char() != '"' {
+            None
+        } else {
+            self.next();
+            Some(unsafe { std::mem::transmute(&self.string[start..self.position - 1]) })
+        }
+    }
+
+    #[inline]
     fn peek_possible_two_len(&mut self, expected: char) -> Option<char> {
         if self.char() == expected {
             Some(expected)
@@ -91,6 +110,14 @@ impl<'a> Lexer<'a> {
         // go to the next character so we can peek in internal logic
         self.next();
         match c {
+            '"' => {
+                let quotes = self.read_quotes();
+                if let Some(quotes) = quotes {
+                    TokenType::Quotes(Cow::Borrowed(quotes))
+                } else {
+                    TokenType::Illegal("expected a \" when declaring a string".to_string())
+                }
+            }
             ':' => TokenType::DoubleDot,
             // Single tokens
             ';' => TokenType::Semicolon,

@@ -122,7 +122,7 @@ impl<'a> SemanticAnalysis<'a> {
                 let expected_type = self
                     .types
                     .get(type_name)
-                    .ok_or(format!("unkown type {}", type_name))?;
+                    .ok_or(format!("unknown type {}", type_name))?;
                 if expected_type.as_ref() != variable_type.exp_type.as_ref() {
                     return Err(format!("unmatching types in variable declaration"));
                 }
@@ -141,20 +141,15 @@ impl<'a> SemanticAnalysis<'a> {
 
     fn translation_expression(&mut self, expr: &Expression) -> Result<ExpressionType, String> {
         match expr {
+            Expression::String(identifier) => {
+                let string = self
+                    .types
+                    .get(&"string".to_string())
+                    .expect("string type must be defined");
+                Ok(ExpressionType::new(None, string.clone()))
+            }
             Expression::Id(identifier) => {
                 return self.translation_variable(expr);
-                // let entry = self
-                //     .variables
-                //     .get(identifier.as_ref())
-                //     .ok_or(format!("undefined variable={}", identifier))?;
-                // if let Entry::Variable(var) = entry {
-                //     return Ok(ExpressionType::new(
-                //         None,
-                //         SemanticAnalysis::actual_type(var),
-                //     ));
-                // } else {
-                //     return Err(format!("undefined variable {}", identifier));
-                // }
             }
             Expression::Number(_) => {
                 let int = self
@@ -190,6 +185,11 @@ impl<'a> SemanticAnalysis<'a> {
                         {
                             return Ok(ExpressionType::new(None, Rc::new(Type::Int)));
                         } else {
+                            if let (Type::String, Type::String) =
+                                (left_type.exp_type.as_ref(), right_type.exp_type.as_ref())
+                            {
+                                return Ok(ExpressionType::new(None, Rc::new(Type::String)));
+                            }
                             return Err("Expected integer type on add operation".to_string());
                         }
                     }
@@ -209,7 +209,7 @@ mod test {
 
     #[test]
     fn test_types() {
-        let code = "let variable: int = 3; variable = variable + 5;";
+        let code = "let variable: string = \"www\"; variable = variable + \"damn\"; let anotherthing: int = 4; anotherthing = 4+3;";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
             .expect("parsing to go well");

@@ -60,6 +60,8 @@ pub enum Expression {
     Boolean(bool),
 
     Struct(Vec<(String, String)>),
+
+    String(String),
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +143,7 @@ fn parameters_to_string(vec: &Vec<NodeToken<Expression>>) -> String {
 impl Expression {
     pub fn string(&self) -> String {
         match self {
+            Expression::String(identifier) => format!("\"{}\"", identifier.to_string()),
             Expression::Id(identifier) => identifier.to_string(),
             Expression::Number(n) => n.to_string(),
             Expression::PrefixOp(op, val) => format!("({}{})", op.to_string(), val.str()),

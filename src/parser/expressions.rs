@@ -1,3 +1,5 @@
+use std::unimplemented;
+
 use crate::ast::node::{Expression, NodeToken, OpType, Statement};
 use crate::parser::Parser;
 use crate::token::TokenType;
@@ -57,10 +59,22 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_string(&mut self) -> Result<NodeToken<Expression>, String> {
+        let identifier = self.next_token();
+        if let TokenType::Quotes(ident) = &identifier {
+            return Ok(NodeToken::new(
+                Expression::String(ident.to_string()),
+                identifier,
+            ));
+        }
+        return Err(format!("expected normal string"));
+    }
+
     /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         // println!("{:?} -> {:?}", self.current_token, self.peek_token);
         match self.current_token {
+            TokenType::Quotes(_) => self.parse_string(),
             TokenType::Ident(_) => self.parse_identifier(),
             TokenType::Int(n) => Ok(NodeToken::new(
                 Expression::Number(n as i64),
@@ -272,6 +286,20 @@ mod test {
     use crate::lexer::Lexer;
     use crate::parser::Parser;
     use crate::token::TokenType;
+
+    #[test]
+    fn test_parse_str() {
+        let input = [(
+            "let thing: string = \"hellow worldw\";",
+            "let thing: string = \"hellow worldw\";",
+        )];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            // assert_eq!(program.len(), 1);
+            // println!("{}", program[0].str());
+            assert_eq!(test.1, program[0].str());
+        }
+    }
 
     #[test]
     fn test_parse_function() {
