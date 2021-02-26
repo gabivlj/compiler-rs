@@ -123,7 +123,22 @@ impl<'a> Parser<'a> {
             TokenType::Type => self.parse_type(),
             TokenType::Ident(_) => {
                 if self.is_peek(&TokenType::Assign) {
-                    Err("unimplemented".to_string())
+                    let ident = self.next_token();
+                    if let TokenType::Ident(identifier) = ident {
+                        self.next_token();
+                        let expr_left = self.parse_expression(Precedence::Lowest).expect("todo");
+                        let expr_token = NodeToken::new_boxed(
+                            Expression::Assignment(identifier.to_string(), Box::new(expr_left)),
+                            TokenType::Assign,
+                        );
+                        self.skip_semicolons();
+                        Ok(NodeToken::new(
+                            Statement::ExpressionStatement(expr_token),
+                            TokenType::Ident(identifier),
+                        ))
+                    } else {
+                        unreachable!();
+                    }
                 } else {
                     self.parse_expression_statement()
                 }

@@ -11,7 +11,7 @@ where
     next: Option<Box<Node<'a, T, S>>>,
 }
 
-struct HashUndo<'a, T, S>
+pub struct HashUndo<'a, T, S>
 where
     T: std::hash::Hash + 'static + ToOwned,
 {
@@ -22,7 +22,7 @@ where
 impl<'hash, T, S> HashUndo<'hash, T, S>
 where
     T: std::hash::Hash + 'static + ToOwned + PartialEq,
-    S: std::hash::Hash + PartialEq,
+    S: PartialEq,
 {
     pub fn new() -> Self {
         Self {
