@@ -33,11 +33,11 @@ where
         for element in uninit_arr.iter_mut() {
             *element = MaybeUninit::new(None);
         }
-        let me = Self {
+        Self {
+            // Safety: definitely safe because we initialized the array before
             map: unsafe { std::mem::transmute(uninit_arr) },
             undo_stack: Vec::with_capacity(50),
-        };
-        me
+        }
     }
 
     pub fn add_ref(&mut self, key_val: &'hash T, to_add: S) {

@@ -64,6 +64,29 @@ pub enum Expression {
     String(String),
 }
 
+#[derive(Clone, Debug)]
+pub enum TypeExpr {
+    Variable(String),
+    Array(Box<TypeExpr>),
+    Function(Vec<TypeExpr>, Box<TypeExpr>),
+}
+
+use std::fmt;
+
+impl std::fmt::Display for TypeExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeExpr::Variable(s) => f.write_fmt(format_args!("{}", s)),
+            TypeExpr::Array(s) => f.write_fmt(format_args!("[{}]", s)),
+            TypeExpr::Function(s, ret) => {
+                let str: Vec<String> = s.iter().map(|s| format!("{}", s)).collect();
+                let joined = str.join(", ");
+                f.write_fmt(format_args!("({}) -> {}", joined, ret))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Statement {
     Type(String, NodeToken<Expression>),
@@ -73,7 +96,7 @@ pub enum Statement {
     While(Box<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
 
     /// Var contains the variable name and the expression value that is assigned to and the type
-    Var(Cow<'static, str>, Box<NodeToken<Expression>>, String),
+    Var(Cow<'static, str>, Box<NodeToken<Expression>>, TypeExpr),
 
     /// Return represents a return statement
     Return(Box<NodeToken<Expression>>),
@@ -291,7 +314,7 @@ impl From<&TokenType> for OpType {
 
 mod test {
     #[allow(unused_imports)]
-    use crate::ast::node::{Expression, NodeToken, Statement};
+    use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
     #[allow(unused_imports)]
     use crate::token::{Token, TokenType};
     #[allow(unused_imports)]
@@ -305,7 +328,7 @@ mod test {
                     Expression::Id(Cow::Borrowed("anotherVar")),
                     TokenType::Ident(Cow::Borrowed("anotherVar")),
                 ),
-                "int".to_string(),
+                TypeExpr::Variable("int".to_string()),
             ),
             TokenType::Let,
         )]);

@@ -1,4 +1,4 @@
-use crate::ast::node::{Expression, OpType, Statement};
+use crate::ast::node::{Expression, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
 use std::rc::Rc;
 use std::{collections::HashMap, unimplemented};
@@ -9,12 +9,14 @@ pub enum Type {
     Int,
     String,
     Record(Vec<(String, Rc<Type>)>),
+    Function(FunctionEntry),
     Array(Rc<Type>),
     Nil,
     Name(String, Rc<Type>),
 }
 
-struct FunctionEntry {
+#[derive(PartialEq)]
+pub struct FunctionEntry {
     formals: Vec<Rc<Type>>,
     result: Rc<Type>,
 }
@@ -109,6 +111,10 @@ impl<'a> SemanticAnalysis<'a> {
         return maybe_a_name.clone();
     }
 
+    fn array_type(&mut self, type_expr: &TypeExpr) -> Option<&Rc<Type>> {
+        unimplemented!()
+    }
+
     pub fn type_check_statement(&mut self, stmt: &mut Statement) -> Result<ExpressionType, String> {
         match stmt {
             Statement::Program(statements) => {
@@ -119,11 +125,16 @@ impl<'a> SemanticAnalysis<'a> {
             }
             Statement::Var(variable, expression, type_name) => {
                 let variable_type = self.translation_expression(&expression.as_ref().node)?;
-                let expected_type = self
-                    .types
-                    .get(type_name)
-                    .ok_or(format!("unknown type {}", type_name))?;
-                if expected_type.as_ref() != variable_type.exp_type.as_ref() {
+                let t = match type_name {
+                    TypeExpr::Variable(s) => self
+                        .types
+                        .get(s)
+                        .ok_or(format!("unknown type {}", type_name)),
+                    TypeExpr::Array(typ) => self.array_type(&typ).ok_or("unknown type".to_string()),
+                    // TypeExpr::Function()
+                    _ => unimplemented!(),
+                }?;
+                if t.as_ref() != variable_type.exp_type.as_ref() {
                     return Err(format!("unmatching types in variable declaration"));
                 }
                 self.variables.insert(

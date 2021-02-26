@@ -18,7 +18,7 @@ fn main() {
     use lexer::Lexer;
     use parser::Parser;
     let s = "
-    let fibonacci = fn(x) {
+    let fibonacci: fib = fn(x) {
       if (x == 0) {
         0
       } else {
