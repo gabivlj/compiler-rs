@@ -57,6 +57,8 @@ pub enum Expression {
 
     Block(Vec<NodeToken<Statement>>),
 
+    Array(Vec<NodeToken<Expression>>),
+
     Boolean(bool),
 
     Struct(Vec<(String, String)>),
@@ -68,7 +70,7 @@ pub enum Expression {
 pub enum TypeExpr {
     Variable(String),
     Array(Box<TypeExpr>),
-    Function(Vec<TypeExpr>, Box<TypeExpr>),
+    Function(Vec<TypeExpr>, Option<Box<TypeExpr>>),
 }
 
 use std::fmt;
@@ -81,7 +83,11 @@ impl std::fmt::Display for TypeExpr {
             TypeExpr::Function(s, ret) => {
                 let str: Vec<String> = s.iter().map(|s| format!("{}", s)).collect();
                 let joined = str.join(", ");
-                f.write_fmt(format_args!("({}) -> {}", joined, ret))
+                if let Some(ret) = ret {
+                    f.write_fmt(format_args!("({}) -> {}", joined, ret))
+                } else {
+                    f.write_fmt(format_args!("({}) -> void", joined))
+                }
             }
         }
     }
@@ -173,6 +179,14 @@ impl Expression {
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
+            Expression::Array(expressions) => format!(
+                "[{}]",
+                expressions
+                    .iter()
+                    .map(|expr| expr.node.string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Expression::Call(id, params) => format!("{}{}", id.str(), parameters_to_string(params)),
             Expression::FunctionDefinition(parameters, block) => format!(
                 "fn {} {{{}}}",

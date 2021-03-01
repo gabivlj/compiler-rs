@@ -29,6 +29,20 @@ impl<'a> Parser<'a> {
         Ok(node)
     }
 
+    pub fn parse_array_expression(&mut self) -> Result<NodeToken<Expression>, String> {
+        let left_brace = self.next_token();
+        let mut vec_exprs = vec![];
+        while !self.is_current(&TokenType::RBracket) && !self.is_current(&TokenType::EOF) {
+            vec_exprs.push(self.parse_expression(Precedence::Lowest)?);
+            if self.is_current(&TokenType::Comma) {
+                self.next_token();
+            }
+        }
+        self.expect_current(&TokenType::RBracket)?;
+        self.next_token();
+        Ok(NodeToken::new(Expression::Array(vec_exprs), left_brace))
+    }
+
     /// parse expression with pratt's
     pub fn parse_expression(&mut self, prec: Precedence) -> Result<NodeToken<Expression>, String> {
         // Get left expression
@@ -74,6 +88,7 @@ impl<'a> Parser<'a> {
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         // println!("{:?} -> {:?}", self.current_token, self.peek_token);
         match self.current_token {
+            TokenType::LBracket => self.parse_array_expression(),
             TokenType::Quotes(_) => self.parse_string(),
             TokenType::Ident(_) => self.parse_identifier(),
             TokenType::Int(n) => Ok(NodeToken::new(
@@ -292,6 +307,20 @@ mod test {
         let input = [(
             "let thing: string = \"hellow worldw\";",
             "let thing: string = \"hellow worldw\";",
+        )];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            // assert_eq!(program.len(), 1);
+            // println!("{}", program[0].str());
+            assert_eq!(test.1, program[0].str());
+        }
+    }
+
+    #[test]
+    fn test_parse_arrays() {
+        let input = [(
+            "let thing: string = [\"hellow worldw\", 1, 2, fn(x,y) { return 3; }, [[[[ 1 ]]]] ];",
+            "let thing: string = [\"hellow worldw\", 1, 2, fn (x, y) { return 3; }, [[[[1]]]]];",
         )];
         for test in input.iter() {
             let program = get_program(test.0);

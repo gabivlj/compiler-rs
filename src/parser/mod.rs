@@ -1,5 +1,7 @@
 mod expressions;
 
+use std::unimplemented;
+
 use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
 use crate::lexer::Lexer;
 use crate::token::TokenType;
@@ -162,19 +164,62 @@ impl<'a> Parser<'a> {
         Ok(NodeToken::new(Statement::Return(Box::new(exp)), token))
     }
 
+    // Parses what is underlined:
+    // 'let' <ident>':' _<type_notation>_ '=' <expression> [';']*
+    fn parse_type_notation(&mut self) -> Result<TypeExpr, String> {
+        let type_token = self.next_token();
+        let type_to_return = match type_token {
+            TokenType::Ident(s) => Ok(TypeExpr::Variable(s.to_string())),
+            TokenType::LBracket => {
+                let result = self.parse_type_notation()?;
+                let is_bracket = self.expect_current(&TokenType::RBracket);
+                if is_bracket.is_err() {
+                    return Err("expected end bracket for expression type".to_string());
+                }
+                self.next_token();
+                Ok(TypeExpr::Array(Box::new(result)))
+            }
+            TokenType::LParen => {
+                let mut vec_of_types: Vec<TypeExpr> = vec![];
+                while !self.is_current(&TokenType::RParen) && !self.is_current(&TokenType::EOF) {
+                    let type_notation = self.parse_type_notation()?;
+                    if self.is_current(&TokenType::Comma) {
+                        self.next_token();
+                    }
+                    vec_of_types.push(type_notation);
+                }
+                self.expect_current(&TokenType::RParen)?;
+                self.next_token();
+                if self.is_current(&TokenType::Arrow) {
+                    self.next_token();
+                    let return_type = self.parse_type_notation()?;
+                    Ok(TypeExpr::Function(
+                        vec_of_types,
+                        Some(Box::new(return_type)),
+                    ))
+                } else {
+                    Ok(TypeExpr::Function(vec_of_types, None))
+                }
+            }
+            c => Err(format!("incorrect token on expression type='{}'", c)),
+        };
+        type_to_return
+    }
+
     // let_stm ::= 'let' <identifier> ':' <identifier> '=' <expression> [';']*
     fn parse_let_statement(&mut self) -> Result<NodeToken<Statement>, String> {
         let token = self.next_token();
         self.expect_peek(&TokenType::DoubleDot)?;
         let name = self.next_token();
         self.next_token();
-        self.expect_peek(&TokenType::Assign)?;
-        let type_token = self.next_token();
-        let type_string = if let TokenType::Ident(s) = type_token {
-            s.as_ref().to_string()
-        } else {
-            return Err("expected an identifier on let statement".to_string());
-        };
+        // let type_token = self.next_token();
+        // let type_string = if let TokenType::Ident(s) = type_token {
+        //     s.as_ref().to_string()
+        // } else {
+        //     return Err("expected an identifier on let statement".to_string());
+        // };
+        let type_notation = self.parse_type_notation()?;
+        self.expect_current(&TokenType::Assign)?;
         if let TokenType::Ident(name_s) = name {
             self.next_token();
             let expr = self.parse_expression(Precedence::Lowest)?;
@@ -183,7 +228,7 @@ impl<'a> Parser<'a> {
             }
             Ok(NodeToken::new(
                 // TODO:
-                Statement::Var(name_s, Box::new(expr), TypeExpr::Variable(type_string)),
+                Statement::Var(name_s, Box::new(expr), type_notation),
                 token,
             ))
         } else {
@@ -285,6 +330,14 @@ mod test {
                 "type Integer = { thing: int; thing02: int; whatever: String; };",
             ),
             ("type Integer = int;", "type Integer = int;"),
+            (
+                "let matrix: [[Integer]] = 3;",
+                "let matrix: [[Integer]] = 3;",
+            ),
+            (
+                "let func: (String, [String], () -> Int) -> Int = fn(x,y,z) { return 1 + z(); }",
+                "let func: (String, [String], () -> Int) -> Int = fn (x, y, z) { return (1 + z()); };",
+            ),
         ];
         for test in input.iter() {
             let program = get_program(test.0);

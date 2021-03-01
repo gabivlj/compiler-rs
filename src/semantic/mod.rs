@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::node::{Expression, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
 use std::rc::Rc;
@@ -21,6 +23,13 @@ pub struct FunctionEntry {
     result: Rc<Type>,
 }
 
+impl FunctionEntry {
+    fn new(formals: Vec<Rc<Type>>, result: Rc<Type>) -> Self {
+        Self { formals, result }
+    }
+}
+
+// !! I think we should delete this and just use Type enum
 enum Entry {
     Variable(Rc<Type>),
     Function(FunctionEntry),
@@ -115,25 +124,58 @@ impl<'a> SemanticAnalysis<'a> {
         unimplemented!()
     }
 
+    fn unwrap_type_expr(&mut self, type_expr: &TypeExpr) -> Option<Rc<Type>> {
+        match type_expr {
+            TypeExpr::Variable(s) => Some(self.types.get(s)?.clone()),
+            TypeExpr::Array(type_expr) => {
+                let boxed_type = self.unwrap_type_expr(type_expr.as_ref())?;
+                Some(Rc::new(Type::Array(boxed_type)))
+            }
+            TypeExpr::Function(params, return_type) => {
+                let mut has_none = false;
+                let types: Vec<Rc<Type>> = params
+                    .iter()
+                    .map(|element| {
+                        let t = self.unwrap_type_expr(element);
+                        has_none = if has_none { has_none } else { t.is_none() };
+                        if has_none {
+                            Rc::new(Type::Void)
+                        } else {
+                            t.unwrap()
+                        }
+                    })
+                    .collect();
+                if has_none {
+                    None
+                } else {
+                    let return_type_unwrapped = if return_type.is_none() {
+                        self.types.get(&"void".to_string()).map(|t| t.clone())
+                    } else {
+                        self.unwrap_type_expr(return_type.as_ref().expect("it's not none"))
+                    }?;
+                    Some(Rc::new(Type::Function(FunctionEntry::new(
+                        types,
+                        return_type_unwrapped,
+                    ))))
+                }
+            }
+        }
+    }
+
     pub fn type_check_statement(&mut self, stmt: &mut Statement) -> Result<ExpressionType, String> {
         match stmt {
             Statement::Program(statements) => {
                 for stmt in statements {
                     self.type_check_statement(&mut stmt.node)?;
                 }
+
                 return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
             }
             Statement::Var(variable, expression, type_name) => {
                 let variable_type = self.translation_expression(&expression.as_ref().node)?;
-                let t = match type_name {
-                    TypeExpr::Variable(s) => self
-                        .types
-                        .get(s)
-                        .ok_or(format!("unknown type {}", type_name)),
-                    TypeExpr::Array(typ) => self.array_type(&typ).ok_or("unknown type".to_string()),
-                    // TypeExpr::Function()
-                    _ => unimplemented!(),
-                }?;
+                let t = self
+                    .unwrap_type_expr(type_name)
+                    .ok_or("unknown error".to_string())?;
                 if t.as_ref() != variable_type.exp_type.as_ref() {
                     return Err(format!("unmatching types in variable declaration"));
                 }

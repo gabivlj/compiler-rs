@@ -118,6 +118,8 @@ impl<'a> Lexer<'a> {
                     TokenType::Illegal("expected a \" when declaring a string".to_string())
                 }
             }
+            '[' => TokenType::LBracket,
+            ']' => TokenType::RBracket,
             ':' => TokenType::DoubleDot,
             // Single tokens
             ';' => TokenType::Semicolon,
@@ -127,7 +129,13 @@ impl<'a> Lexer<'a> {
             '{' => TokenType::LBrace,
             '}' => TokenType::RBrace,
             ',' => TokenType::Comma,
-            '-' => TokenType::Minus,
+            '-' => match self.peek_possible_two_len('>') {
+                Some(_) => {
+                    self.next();
+                    TokenType::Arrow
+                }
+                None => TokenType::Minus,
+            },
             '>' => TokenType::GreaterThan,
             '<' => TokenType::LessThan,
             '/' => TokenType::Slash,

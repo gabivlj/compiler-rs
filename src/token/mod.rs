@@ -34,6 +34,9 @@ pub enum TokenType {
     Struct,
     Type,
     DoubleDot,
+    LBracket,
+    RBracket,
+    Arrow,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -45,6 +48,9 @@ pub struct Token {
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TokenType::Arrow => write!(f, "->"),
+            TokenType::LBracket => write!(f, "["),
+            TokenType::RBracket => write!(f, "]"),
             TokenType::LParen => write!(f, "("),
             TokenType::RParen => write!(f, ")"),
             TokenType::Ident(s) => write!(f, "{}", s),
