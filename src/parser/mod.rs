@@ -339,7 +339,7 @@ mod test {
                     (String, [String], () -> Int) -> Int = fn(x: String, y: [String], z: () -> Int) -> Int { 
                     return 1 + z(); 
                 }",
-                "let func: (String, [String], () -> Int) -> Int = fn (x, y, z) { return (1 + z()); };",
+                "let func: (String, [String], () -> Int) -> Int = fn (x: String, y: [String], z: () -> Int) -> Int { return (1 + z()); };",
             ),
         ];
         for test in input.iter() {

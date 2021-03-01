@@ -48,7 +48,12 @@ pub enum Expression {
     },
 
     /// FunctionDefinition the parameter list and the Block node
-    FunctionDefinition(Vec<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
+    FunctionDefinition {
+        parameters: Vec<NodeToken<Expression>>,
+        types: Vec<TypeExpr>,
+        return_type: TypeExpr,
+        block: Vec<NodeToken<Statement>>,
+    },
 
     /// Almost equal to Var, but instead will override the already declared variable
     Assignment(String, Box<NodeToken<Expression>>),
@@ -159,11 +164,28 @@ impl Statement {
     }
 }
 
-fn parameters_to_string(vec: &Vec<NodeToken<Expression>>) -> String {
+fn call_parameters_to_string(vec: &Vec<NodeToken<Expression>>) -> String {
     format!(
         "({})",
         vec.iter()
-            .map(|node| node.str())
+            .map(|node| { node.str() })
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
+}
+
+fn parameters_fn_to_string(
+    vec: &Vec<NodeToken<Expression>>,
+    type_params: &Vec<TypeExpr>,
+) -> String {
+    let mut idx = 0;
+    format!(
+        "({})",
+        vec.iter()
+            .map(|node| {
+                idx += 1;
+                format!("{}: {}", node.str(), type_params[idx - 1])
+            })
             .collect::<Vec<String>>()
             .join(", ")
     )
@@ -187,10 +209,18 @@ impl Expression {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Expression::Call(id, params) => format!("{}{}", id.str(), parameters_to_string(params)),
-            Expression::FunctionDefinition(parameters, block) => format!(
-                "fn {} {{{}}}",
-                parameters_to_string(parameters),
+            Expression::Call(id, params) => {
+                format!("{}{}", id.str(), call_parameters_to_string(params))
+            }
+            Expression::FunctionDefinition {
+                parameters,
+                types,
+                return_type,
+                block,
+            } => format!(
+                "fn {} -> {} {{{}}}",
+                parameters_fn_to_string(parameters, types),
+                return_type,
                 block.iter().fold(String::new(), |prev, now| format!(
                     "{} {} ",
                     prev,

@@ -68,7 +68,7 @@ impl<'a> Lexer<'a> {
     fn read_identifier(&mut self) -> &'static str {
         let start = self.position - 1;
         while self.char() != '\0' {
-            if !self.char().is_ascii_alphanumeric() {
+            if !self.char().is_ascii_alphanumeric() && self.char() != '_' {
                 break;
             }
             self.next();

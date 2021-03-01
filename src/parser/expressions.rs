@@ -1,6 +1,6 @@
 use std::unimplemented;
 
-use crate::ast::node::{Expression, NodeToken, OpType, Statement};
+use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::parser::Parser;
 use crate::token::TokenType;
 
@@ -142,8 +142,19 @@ impl<'a> Parser<'a> {
         assert_eq!(self.current_token, TokenType::Function);
         let function_token = self.next_token();
         let parameters = self.parse_fn_def_parameters()?;
+        let return_type = if self.is_current(&TokenType::Arrow) {
+            self.next_token();
+            self.parse_type_notation()
+        } else {
+            Ok(TypeExpr::Variable("void".to_string()))
+        }?;
         let block = self.parse_block_statement()?;
-        let func = Expression::FunctionDefinition(parameters, block);
+        let func = Expression::FunctionDefinition {
+            block,
+            parameters: parameters.0,
+            types: parameters.1,
+            return_type,
+        };
         Ok(NodeToken::new(func, function_token))
     }
 
@@ -155,13 +166,20 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_fn_def_parameters(&mut self) -> Result<Vec<NodeToken<Expression>>, String> {
+    fn parse_fn_def_parameters(
+        &mut self,
+    ) -> Result<(Vec<NodeToken<Expression>>, Vec<TypeExpr>), String> {
         self.expect_current(&TokenType::LParen)?;
         self.next_token();
         let mut params = vec![];
+        let mut types: Vec<TypeExpr> = vec![];
         while !self.is_current(&TokenType::RParen) && !self.is_current(&TokenType::EOF) {
             let identifier = self.parse_identifier()?;
             params.push(identifier);
+            self.expect_current(&TokenType::DoubleDot)?;
+            self.next_token();
+            let a_type = self.parse_type_notation()?;
+            types.push(a_type);
             if self.is_current(&TokenType::Comma) && self.is_identifier_peek() {
                 self.next_token();
             } else if self.is_current(&TokenType::Comma) {
@@ -170,7 +188,7 @@ impl<'a> Parser<'a> {
         }
         self.expect_current(&TokenType::RParen)?;
         self.next_token();
-        Ok(params)
+        Ok((params, types))
     }
 
     /// get the left expression and with the current token return an infix expression
@@ -317,8 +335,8 @@ mod test {
     #[test]
     fn test_parse_arrays() {
         let input = [(
-            "let thing: string = [\"hellow worldw\", 1, 2, fn(x,y) { return 3; }, [[[[ 1 ]]]] ];",
-            "let thing: string = [\"hellow worldw\", 1, 2, fn (x, y) { return 3; }, [[[[1]]]]];",
+            "let thing: string = [\"hellow worldw\", 1, 2, fn (x: int,y:int) { return 3; }, [[[[ 1 ]]]] ];",
+            "let thing: string = [\"hellow worldw\", 1, 2, fn (x: int, y: int) -> void { return 3; }, [[[[1]]]]];",
         )];
         for test in input.iter() {
             let program = get_program(test.0);
@@ -330,20 +348,20 @@ mod test {
     fn test_parse_function() {
         let input = [
             (
-                "fn(x, y) { x + y; y + z; if x == y { 1 } };",
-                "fn (x, y) { (x + y)  (y + z)  if (x == y) { 1 } }",
+                "fn (x: int, y: int) { x + y; y + z; if x == y { 1 } };",
+                "fn (x: int, y: int) -> void { (x + y)  (y + z)  if (x == y) { 1 } }",
             ),
             (
-                "fn(x, y) { x + y; y + z; if x == y { 1 } else if !!!!!!!---true { 5; } else { false; } };",
-                "fn (x, y) { (x + y)  (y + z)  if (x == y) { 1 } else if (!(!(!(!(!(!(!(-(-(-true)))))))))) { 5 } else { false } }",
+                "fn(x: int, y: int) { x + y; y + z; if x == y { 1 } else if !!!!!!!---true { 5; } else { false; } };",
+                "fn (x: int, y: int) -> void { (x + y)  (y + z)  if (x == y) { 1 } else if (!(!(!(!(!(!(!(-(-(-true)))))))))) { 5 } else { false } }",
             ),
             (
                 "fn(){}",
-                "fn () {}"
+                "fn () -> void {}"
             ),
             (
                 "let f: int = fn(){}",
-                "let f: int = fn () {};"
+                "let f: int = fn () -> void {};"
             )
         ];
         for test in input.iter() {
@@ -562,8 +580,8 @@ mod test {
             ("(5 + 5) / 2", "((5 + 5) / 2)"),
             ("add(x, y)", "add(x, y)"),
             (
-                "let added: int = add(x, y, fn(x,y,y){ 5; }, if x == y {},) + 10 / 30 * f()",
-                "let added: int = (add(x, y, fn (x, y, y) { 5 }, if (x == y) { }) + ((10 / 30) * f()));",
+                "let added: int = add(x, y, fn(x:_,y:_,y:_){ 5; }, if x == y {},) + 10 / 30 * f()",
+                "let added: int = (add(x, y, fn (x: _, y: _, y: _) -> void { 5 }, if (x == y) { }) + ((10 / 30) * f()));",
             ),
             ("2 / (5 + 5)", "(2 / (5 + 5))"),
             ("-(5 + 5)", "(-(5 + 5))"),
