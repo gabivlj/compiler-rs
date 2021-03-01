@@ -62,13 +62,21 @@ struct ExpressionType {
 }
 
 impl Type {
-    fn equal_type(&self, other: &Self) -> bool {
-        if let Type::Array(_) = self {
-            if let Type::Array(v) = other {
-                if let Type::Void = v.as_ref() {
-                    return true;
-                }
-                return self == other;
+    fn equal_type<'a>(
+        self: &Rc<Self>,
+        other: &Rc<Self>,
+        semantic: &'a SemanticAnalysis<'a>,
+    ) -> bool {
+        if let Type::Array(_) = self.as_ref() {
+            if let Type::Array(_) = other.as_ref() {
+            } else {
+                return false;
+            }
+            let true_type = semantic.unbox_array(other);
+            if let Type::Void = true_type.as_ref() {
+                return true;
+            } else if let Type::Void = semantic.unbox_array(self).as_ref() {
+                return true;
             }
         }
         self == other
@@ -135,8 +143,12 @@ impl<'a> SemanticAnalysis<'a> {
         return maybe_a_name.clone();
     }
 
-    fn array_type(&mut self, type_expr: &TypeExpr) -> Option<&Rc<Type>> {
-        unimplemented!()
+    fn unbox_array(&self, array_type: &Rc<Type>) -> Rc<Type> {
+        if let Type::Array(t) = array_type.as_ref() {
+            self.unbox_array(t)
+        } else {
+            array_type.clone()
+        }
     }
 
     fn unwrap_type_expr(&mut self, type_expr: &TypeExpr) -> Option<Rc<Type>> {
@@ -191,7 +203,7 @@ impl<'a> SemanticAnalysis<'a> {
                 let t = self
                     .unwrap_type_expr(type_name)
                     .ok_or("unknown error".to_string())?;
-                if !t.as_ref().equal_type(variable_type.exp_type.as_ref()) {
+                if !t.equal_type(&variable_type.exp_type, &self) {
                     return Err(format!(
                         "unmatching types in variable declaration={:?}, {:?}",
                         t, variable_type.exp_type
@@ -239,8 +251,14 @@ impl<'a> SemanticAnalysis<'a> {
                 for expr in arr {
                     let type_node = self.translation_expression(&expr.node)?;
                     if let Some(type_consensus) = &type_consensus {
-                        if type_consensus.exp_type.as_ref() != type_node.exp_type.as_ref() {
-                            return Err("different types between array elements".to_string());
+                        if !type_consensus
+                            .exp_type
+                            .equal_type(&type_node.exp_type, &self)
+                        {
+                            return Err(format!(
+                                "different types between array elements={:?}, {:?}",
+                                type_consensus.exp_type, type_node.exp_type
+                            ));
                         }
                     } else {
                         type_consensus = Some(type_node);
@@ -266,7 +284,7 @@ impl<'a> SemanticAnalysis<'a> {
                     .get(name)
                     .ok_or(format!("undefined variable={}", name))?;
                 if let Entry::Variable(type_var) = type_variable {
-                    if !expr_type.exp_type.equal_type(type_var.as_ref()) {
+                    if !expr_type.exp_type.equal_type(&type_var, &self) {
                         Err(format!("unmatching type"))
                     } else {
                         Ok(ExpressionType::new(None, type_var.clone()))
@@ -311,9 +329,10 @@ mod test {
     #[test]
     fn test_types() {
         let code = "
-            let variable: string = \"www\"; variable = variable + \"damn\"; let anotherthing: int = 4; anotherthing = 4+3;
+            let variable: string = \"esto es una frase\";                                     
+            variable = variable + \"damn\"; let numero: int = 4; numero = 4+3;
             let arr: [int] = [1,2,3];
-            let v: [string] = [];
+            let v: [[[[[[string]]]]]] = [[], [[[[[\"string\"]]]]]];
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
