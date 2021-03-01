@@ -310,8 +310,6 @@ mod test {
         )];
         for test in input.iter() {
             let program = get_program(test.0);
-            // assert_eq!(program.len(), 1);
-            // println!("{}", program[0].str());
             assert_eq!(test.1, program[0].str());
         }
     }
@@ -324,8 +322,6 @@ mod test {
         )];
         for test in input.iter() {
             let program = get_program(test.0);
-            // assert_eq!(program.len(), 1);
-            // println!("{}", program[0].str());
             assert_eq!(test.1, program[0].str());
         }
     }
