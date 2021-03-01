@@ -7,6 +7,7 @@ use std::{collections::HashMap, unimplemented};
 
 #[derive(PartialEq, Debug)]
 pub enum Type {
+    Scope,
     Void,
     Int,
     String,
@@ -189,13 +190,34 @@ impl<'a> SemanticAnalysis<'a> {
         }
     }
 
+    fn begin_scope(&mut self) {
+        self.types
+            .add("_<scope start>_".to_string(), Rc::new(Type::Scope));
+    }
+
+    fn end_scope(&mut self) {
+        let mut possible_scope_type = self.types.pop();
+        while possible_scope_type != None {
+            if let Type::Scope = possible_scope_type.as_ref().unwrap().0.as_ref() {
+                return;
+            }
+            possible_scope_type = self.types.pop();
+        }
+        panic!(
+            "We should always put a scope when beginning, this is 
+            probably either a scope unsync or we just 
+            didn't insert a scope in the beginning"
+        );
+    }
+
     pub fn type_check_statement(&mut self, stmt: &mut Statement) -> Result<ExpressionType, String> {
         match stmt {
             Statement::Program(statements) => {
+                self.begin_scope();
                 for stmt in statements {
                     self.type_check_statement(&mut stmt.node)?;
                 }
-
+                self.end_scope();
                 return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
             }
             Statement::Var(variable, expression, type_name) => {
@@ -235,9 +257,11 @@ impl<'a> SemanticAnalysis<'a> {
                     .expect("string type must be defined");
                 Ok(ExpressionType::new(None, string.clone()))
             }
+
             Expression::Id(_) => {
                 return self.translation_variable(expr);
             }
+
             Expression::Number(_) => {
                 let int = self
                     .types
@@ -277,6 +301,15 @@ impl<'a> SemanticAnalysis<'a> {
                 }
             }
 
+            Expression::FunctionDefinition {
+                parameters: _,
+                types: _,
+                return_type: _,
+                block: _,
+            } => {
+                unimplemented!()
+            }
+
             Expression::Assignment(name, expr) => {
                 let expr_type = self.translation_expression(&expr.as_ref().node)?;
                 let type_variable = self
@@ -294,6 +327,7 @@ impl<'a> SemanticAnalysis<'a> {
                     Err("can't assign a function another time".to_string())
                 }
             }
+
             Expression::BinaryOp(left, right, op) => {
                 let left_type = self.translation_expression(&left.node)?;
                 let right_type = self.translation_expression(&right.node)?;
@@ -309,7 +343,7 @@ impl<'a> SemanticAnalysis<'a> {
                             {
                                 return Ok(ExpressionType::new(None, Rc::new(Type::String)));
                             }
-                            return Err("Expected integer type on add operation".to_string());
+                            return Err("Expected integer/string type on add operation".to_string());
                         }
                     }
                     _ => unimplemented!(),
@@ -332,6 +366,7 @@ mod test {
             let variable: string = \"esto es una frase\";                                     
             variable = variable + \"damn\"; let numero: int = 4; numero = 4+3;
             let arr: [int] = [1,2,3];
+            let string_combined: string = \"sss\" + \"www\" + \"qqq\";
             let v: [[[[[[string]]]]]] = [[], [[[[[\"string\"]]]]]];
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
