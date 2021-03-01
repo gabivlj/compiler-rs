@@ -5,7 +5,7 @@ use crate::hash_undo::HashUndo;
 use std::rc::Rc;
 use std::{collections::HashMap, unimplemented};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Type {
     Void,
     Int,
@@ -17,7 +17,7 @@ pub enum Type {
     Name(String, Rc<Type>),
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub struct FunctionEntry {
     formals: Vec<Rc<Type>>,
     result: Rc<Type>,
@@ -53,12 +53,26 @@ struct SemanticAnalysis<'a> {
     variables: HashMap<String, Entry>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Translation;
 
 struct ExpressionType {
     exp_type: Rc<Type>,
     translation: Option<Translation>,
+}
+
+impl Type {
+    fn equal_type(&self, other: &Self) -> bool {
+        if let Type::Array(_) = self {
+            if let Type::Array(v) = other {
+                if let Type::Void = v.as_ref() {
+                    return true;
+                }
+                return self == other;
+            }
+        }
+        self == other
+    }
 }
 
 impl ExpressionType {
@@ -78,6 +92,7 @@ impl<'a> SemanticAnalysis<'a> {
         };
         me.types.add("int".to_string(), Rc::new(Type::Int));
         me.types.add("string".to_string(), Rc::new(Type::String));
+        me.types.add("void".to_string(), Rc::new(Type::Void));
         me
     }
 
@@ -176,8 +191,11 @@ impl<'a> SemanticAnalysis<'a> {
                 let t = self
                     .unwrap_type_expr(type_name)
                     .ok_or("unknown error".to_string())?;
-                if t.as_ref() != variable_type.exp_type.as_ref() {
-                    return Err(format!("unmatching types in variable declaration"));
+                if !t.as_ref().equal_type(variable_type.exp_type.as_ref()) {
+                    return Err(format!(
+                        "unmatching types in variable declaration={:?}, {:?}",
+                        t, variable_type.exp_type
+                    ));
                 }
                 self.variables.insert(
                     variable.to_string(),
@@ -192,16 +210,20 @@ impl<'a> SemanticAnalysis<'a> {
         return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
     }
 
+    fn get_void(&self) -> ExpressionType {
+        ExpressionType::new(None, self.types.get(&"void".to_string()).unwrap().clone())
+    }
+
     fn translation_expression(&mut self, expr: &Expression) -> Result<ExpressionType, String> {
         match expr {
-            Expression::String(identifier) => {
+            Expression::String(_) => {
                 let string = self
                     .types
                     .get(&"string".to_string())
                     .expect("string type must be defined");
                 Ok(ExpressionType::new(None, string.clone()))
             }
-            Expression::Id(identifier) => {
+            Expression::Id(_) => {
                 return self.translation_variable(expr);
             }
             Expression::Number(_) => {
@@ -211,6 +233,32 @@ impl<'a> SemanticAnalysis<'a> {
                     .expect("Integer type must be defined");
                 Ok(ExpressionType::new(None, int.clone()))
             }
+
+            Expression::Array(arr) => {
+                let mut type_consensus: Option<ExpressionType> = None;
+                for expr in arr {
+                    let type_node = self.translation_expression(&expr.node)?;
+                    if let Some(type_consensus) = &type_consensus {
+                        if type_consensus.exp_type.as_ref() != type_node.exp_type.as_ref() {
+                            return Err("different types between array elements".to_string());
+                        }
+                    } else {
+                        type_consensus = Some(type_node);
+                    }
+                }
+                if let Some(type_consensus) = type_consensus {
+                    Ok(ExpressionType::new(
+                        None,
+                        Rc::new(Type::Array(type_consensus.exp_type)),
+                    ))
+                } else {
+                    Ok(ExpressionType::new(
+                        None,
+                        Rc::new(Type::Array(Rc::new(Type::Void))),
+                    ))
+                }
+            }
+
             Expression::Assignment(name, expr) => {
                 let expr_type = self.translation_expression(&expr.as_ref().node)?;
                 let type_variable = self
@@ -218,7 +266,7 @@ impl<'a> SemanticAnalysis<'a> {
                     .get(name)
                     .ok_or(format!("undefined variable={}", name))?;
                 if let Entry::Variable(type_var) = type_variable {
-                    if expr_type.exp_type.as_ref() != type_var.as_ref() {
+                    if !expr_type.exp_type.equal_type(type_var.as_ref()) {
                         Err(format!("unmatching type"))
                     } else {
                         Ok(ExpressionType::new(None, type_var.clone()))
@@ -262,7 +310,11 @@ mod test {
 
     #[test]
     fn test_types() {
-        let code = "let variable: string = \"www\"; variable = variable + \"damn\"; let anotherthing: int = 4; anotherthing = 4+3;";
+        let code = "
+            let variable: string = \"www\"; variable = variable + \"damn\"; let anotherthing: int = 4; anotherthing = 4+3;
+            let arr: [int] = [1,2,3];
+            let v: [string] = [];
+        ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
             .expect("parsing to go well");
