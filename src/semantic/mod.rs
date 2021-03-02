@@ -3,7 +3,7 @@
 use crate::ast::node::{Expression, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
 use std::rc::Rc;
-use std::{collections::HashMap, unimplemented};
+// use std::{collections::HashUndo, unimplemented};
 
 #[derive(PartialEq, Debug)]
 pub enum Type {
@@ -30,10 +30,12 @@ impl FunctionEntry {
     }
 }
 
+#[derive(PartialEq)]
 // !! I think we should delete this and just use Type enum
 enum Entry {
     Variable(Rc<Type>),
     Function(FunctionEntry),
+    Scope,
 }
 
 impl Entry {
@@ -51,7 +53,7 @@ impl Entry {
 
 struct SemanticAnalysis<'a> {
     types: HashUndo<'a, String, Rc<Type>>,
-    variables: HashMap<String, Entry>,
+    variables: HashUndo<'a, String, Entry>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -97,7 +99,7 @@ impl<'a> SemanticAnalysis<'a> {
     pub fn new() -> Self {
         let mut me = Self {
             types: HashUndo::new(),
-            variables: HashMap::new(),
+            variables: HashUndo::new(),
         };
         me.types.add("int".to_string(), Rc::new(Type::Int));
         me.types.add("string".to_string(), Rc::new(Type::String));
@@ -192,22 +194,32 @@ impl<'a> SemanticAnalysis<'a> {
 
     fn begin_scope(&mut self) {
         self.types
-            .add("_<scope start>_".to_string(), Rc::new(Type::Scope));
+            .add("@_<scope~start>_".to_string(), Rc::new(Type::Scope));
+        self.variables
+            .add("@_<scope~start>_".to_string(), Entry::Scope);
     }
 
     fn end_scope(&mut self) {
         let mut possible_scope_type = self.types.pop();
+        let mut found_scope_start = false;
         while possible_scope_type != None {
             if let Type::Scope = possible_scope_type.as_ref().unwrap().0.as_ref() {
-                return;
+                found_scope_start = true;
+                break;
             }
             possible_scope_type = self.types.pop();
         }
-        panic!(
-            "We should always put a scope when beginning, this is 
-            probably either a scope unsync or we just 
-            didn't insert a scope in the beginning"
-        );
+        assert!(found_scope_start);
+        found_scope_start = false;
+        let mut possible_entry_scope_end = self.variables.pop();
+        while possible_entry_scope_end != None {
+            if let Entry::Scope = possible_entry_scope_end.as_ref().unwrap().0 {
+                found_scope_start = true;
+                break;
+            }
+            possible_entry_scope_end = self.variables.pop();
+        }
+        assert!(found_scope_start);
     }
 
     pub fn type_check_statement(&mut self, stmt: &mut Statement) -> Result<ExpressionType, String> {
@@ -231,7 +243,7 @@ impl<'a> SemanticAnalysis<'a> {
                         t, variable_type.exp_type
                     ));
                 }
-                self.variables.insert(
+                self.variables.add(
                     variable.to_string(),
                     Entry::new_variable(&variable_type.exp_type),
                 );
@@ -302,11 +314,32 @@ impl<'a> SemanticAnalysis<'a> {
             }
 
             Expression::FunctionDefinition {
-                parameters: _,
-                types: _,
-                return_type: _,
+                parameters,
+                types,
+                return_type,
                 block: _,
             } => {
+                let mut has_none = false;
+                let types_transformed = types
+                    .iter()
+                    .map(|t| {
+                        //
+                        let type_expr = self.unwrap_type_expr(t);
+                        has_none = if has_none {
+                            has_none
+                        } else {
+                            type_expr.is_none()
+                        };
+                        if has_none {
+                            self.get_void().exp_type
+                        } else {
+                            type_expr.unwrap()
+                        }
+                    })
+                    .collect::<Vec<Rc<Type>>>();
+                let type_return = self
+                    .unwrap_type_expr(return_type)
+                    .ok_or("unknown type on return".to_string())?;
                 unimplemented!()
             }
 
