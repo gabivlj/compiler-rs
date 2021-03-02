@@ -191,6 +191,20 @@ impl<'a> Parser<'a> {
         Ok((params, types))
     }
 
+    pub fn parse_index_access(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        let t = self.next_token();
+        let right = self.parse_expression(Precedence::Lowest)?;
+        self.expect_current(&TokenType::RBracket)?;
+        self.next_token();
+        Ok(NodeToken::new(
+            Expression::IndexAccess(Box::new(left), Box::new(right)),
+            t,
+        ))
+    }
+
     /// get the left expression and with the current token return an infix expression
     /// if the result is an error, it will return the expression ownership to the caller,
     /// otherwise, it will return as normal the infix parse.
@@ -207,6 +221,7 @@ impl<'a> Parser<'a> {
             | TokenType::Asterisk
             | TokenType::Equal
             | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
+            TokenType::LBracket => Ok(self.parse_index_access(left)),
             TokenType::LParen => Ok(self.parse_fn_call(left)),
             _ => Err(left),
         }
@@ -295,7 +310,7 @@ impl<'a> Parser<'a> {
             TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
             TokenType::Plus | TokenType::Minus => Precedence::Sum,
             TokenType::Asterisk | TokenType::Slash => Precedence::Product,
-            TokenType::LParen => Precedence::Call,
+            TokenType::LParen | TokenType::LBracket => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }

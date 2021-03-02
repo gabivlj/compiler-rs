@@ -56,7 +56,7 @@ pub enum Expression {
     },
 
     /// Almost equal to Var, but instead will override the already declared variable
-    Assignment(String, Box<NodeToken<Expression>>),
+    Assignment(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 
     PrefixOp(OpType, Box<NodeToken<Expression>>),
 
@@ -69,6 +69,8 @@ pub enum Expression {
     Struct(Vec<(String, String)>),
 
     String(String),
+
+    IndexAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 }
 
 #[derive(Clone, Debug)]
@@ -194,6 +196,12 @@ fn parameters_fn_to_string(
 impl Expression {
     pub fn string(&self) -> String {
         match self {
+            Expression::IndexAccess(left, right) => {
+                format!("{}[{}]", left.node.string(), right.node.string())
+            }
+            Expression::Assignment(left, right) => {
+                format!("{} = {}", left.node.string(), right.node.string())
+            }
             Expression::String(identifier) => format!("\"{}\"", identifier.to_string()),
             Expression::Id(identifier) => identifier.to_string(),
             Expression::Number(n) => n.to_string(),

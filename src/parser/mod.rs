@@ -121,14 +121,38 @@ impl<'a> Parser<'a> {
             TokenType::Return => self.parse_return_statement(),
             TokenType::For => self.parse_for_statement(),
             TokenType::Type => self.parse_type(),
-            TokenType::Ident(_) => {
+            TokenType::Ident(ref id) => {
+                if self.is_peek(&TokenType::LBracket) {
+                    let id = id.clone();
+                    let ident = self.next_token();
+                    let expr =
+                        self.parse_index_access(NodeToken::new(Expression::Id(id.clone()), ident))?;
+                    self.expect_current(&TokenType::Assign)?;
+                    let t = self.next_token();
+                    let expr_token = NodeToken::new_boxed(
+                        Expression::Assignment(
+                            Box::new(expr),
+                            Box::new(self.parse_expression(Precedence::Lowest)?),
+                        ),
+                        TokenType::Assign,
+                    );
+                    self.skip_semicolons();
+                    return Ok(NodeToken::new(
+                        Statement::ExpressionStatement(expr_token),
+                        t,
+                    ));
+                }
                 if self.is_peek(&TokenType::Assign) {
                     let ident = self.next_token();
-                    if let TokenType::Ident(identifier) = ident {
+                    if let TokenType::Ident(identifier) = &ident {
                         self.next_token();
+                        let identifier = identifier.clone();
                         let expr_left = self.parse_expression(Precedence::Lowest).expect("todo");
                         let expr_token = NodeToken::new_boxed(
-                            Expression::Assignment(identifier.to_string(), Box::new(expr_left)),
+                            Expression::Assignment(
+                                NodeToken::new_boxed(Expression::Id(identifier.clone()), ident),
+                                Box::new(expr_left),
+                            ),
                             TokenType::Assign,
                         );
                         self.skip_semicolons();
@@ -310,6 +334,25 @@ mod test {
         for test in input.iter() {
             let program = get_program(test.0);
             assert_eq!(program.len(), 1);
+            assert_eq!(program[0].str(), test.1);
+        }
+    }
+
+    #[test]
+    fn test_parse_index_access() {
+        let input = [
+            ("hash[1 + 3 + 4] = 5;", "hash[((1 + 3) + 4)] = 5"),
+            (
+                "hash[((1 + 3) + 4)] = hash[12345 + 111 + hash[111] + hash[[[[[[hash[1]]]]]]]]",
+                "hash[((1 + 3) + 4)] = hash[(((12345 + 111) + hash[111]) + hash[[[[[[hash[1]]]]]]])]",
+            ),
+            (
+                "hash[1] = hash[1][1][hash[hash[1 + hash[3 + hash[3]]]]];",
+                "hash[1] = hash[1][1][hash[hash[(1 + hash[(3 + hash[3])])]]]",
+            ),
+        ];
+        for test in input.iter() {
+            let program = get_program(test.0);
             assert_eq!(program[0].str(), test.1);
         }
     }

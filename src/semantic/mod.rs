@@ -416,19 +416,12 @@ impl<'a> SemanticAnalysis<'a> {
 
             Expression::Assignment(name, expr) => {
                 let expr_type = self.translation_expression(&mut expr.as_mut().node)?;
-                let type_variable = self
-                    .variables
-                    .get(name)
-                    .ok_or(format!("undefined variable={}", name))?;
-                if let Entry::Variable(type_var) = type_variable {
-                    if !expr_type.exp_type.equal_type(&type_var, &self) {
-                        Err(format!("unmatching type"))
-                    } else {
-                        Ok(ExpressionType::new(None, type_var.clone()))
-                    }
+                let expr_to_assign = self.translation_expression(&mut name.as_mut().node)?;
+                let type_var = expr_to_assign.exp_type;
+                if !expr_type.exp_type.equal_type(&type_var, &self) {
+                    Err(format!("unmatching type"))
                 } else {
-                    // ?? maybe
-                    Err("can't assign a function another time".to_string())
+                    Ok(ExpressionType::new(None, type_var.clone()))
                 }
             }
 
@@ -478,6 +471,8 @@ mod test {
                 let v: int = y + y + y + y + y + 1 + 2 + 3;                
                 return \"cool\"; 
             };
+            let func_02: () -> void = fn() { let thing: string = \"\"; };
+
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
