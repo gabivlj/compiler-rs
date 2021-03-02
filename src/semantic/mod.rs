@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::ast::node::{Expression, OpType, Statement, TypeExpr};
+use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
 use std::rc::Rc;
 // use std::{collections::HashUndo, unimplemented};
@@ -233,7 +233,7 @@ impl<'a> SemanticAnalysis<'a> {
                 return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
             }
             Statement::Var(variable, expression, type_name) => {
-                let variable_type = self.translation_expression(&expression.as_ref().node)?;
+                let variable_type = self.translation_expression(&mut expression.as_mut().node)?;
                 let t = self
                     .unwrap_type_expr(type_name)
                     .ok_or("unknown error".to_string())?;
@@ -248,8 +248,14 @@ impl<'a> SemanticAnalysis<'a> {
                     Entry::new_variable(&variable_type.exp_type),
                 );
             }
+
+            Statement::Return(return_expression) => {
+                return self.translation_expression(&mut return_expression.node);
+            }
+
             Statement::ExpressionStatement(expr) => {
-                return self.translation_expression(&mut expr.node)
+                // NOTE: Be careful on this, maybe we should return it
+                self.translation_expression(&mut expr.node)?;
             }
             _ => unimplemented!(),
         }
@@ -260,7 +266,37 @@ impl<'a> SemanticAnalysis<'a> {
         ExpressionType::new(None, self.types.get(&"void".to_string()).unwrap().clone())
     }
 
-    fn translation_expression(&mut self, expr: &Expression) -> Result<ExpressionType, String> {
+    fn function_block(
+        &mut self,
+        statements: &mut Vec<NodeToken<Statement>>,
+    ) -> Result<ExpressionType, String> {
+        let mut expression_types: Vec<ExpressionType> = vec![];
+        let mut type_atm: Option<Rc<Type>> = None;
+        for statement in statements {
+            let exp_type = self.type_check_statement(&mut statement.node)?;
+            let last_type = exp_type.exp_type.clone();
+            expression_types.push(exp_type);
+            if last_type.as_ref() == &Type::Void {
+                continue;
+            }
+            if let Some(current_type) = &type_atm {
+                if !current_type.equal_type(&last_type, &self) {
+                    return Err(format!(
+                        "error: tried to return before a {:?}, but got here a {:?}",
+                        current_type, last_type
+                    ));
+                }
+            } else {
+                type_atm = Some(last_type);
+            }
+        }
+        Ok(ExpressionType::new(
+            None,
+            type_atm.unwrap_or(Rc::new(Type::Void)),
+        ))
+    }
+
+    fn translation_expression(&mut self, expr: &mut Expression) -> Result<ExpressionType, String> {
         match expr {
             Expression::String(_) => {
                 let string = self
@@ -285,7 +321,7 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::Array(arr) => {
                 let mut type_consensus: Option<ExpressionType> = None;
                 for expr in arr {
-                    let type_node = self.translation_expression(&expr.node)?;
+                    let type_node = self.translation_expression(&mut expr.node)?;
                     if let Some(type_consensus) = &type_consensus {
                         if !type_consensus
                             .exp_type
@@ -313,17 +349,26 @@ impl<'a> SemanticAnalysis<'a> {
                 }
             }
 
+            Expression::If {
+                block,
+                else_ifs,
+                last_else,
+                condition,
+            } => {
+                //
+                todo!("implement IF")
+            }
+
             Expression::FunctionDefinition {
                 parameters,
                 types,
                 return_type,
-                block: _,
+                ref mut block,
             } => {
                 let mut has_none = false;
                 let types_transformed = types
                     .iter()
                     .map(|t| {
-                        //
                         let type_expr = self.unwrap_type_expr(t);
                         has_none = if has_none {
                             has_none
@@ -340,11 +385,37 @@ impl<'a> SemanticAnalysis<'a> {
                 let type_return = self
                     .unwrap_type_expr(return_type)
                     .ok_or("unknown type on return".to_string())?;
-                unimplemented!()
+                self.begin_scope();
+                // Declare parameters
+                for (idx, parameter) in parameters.iter().enumerate() {
+                    if let Expression::Id(var) = &parameter.node {
+                        self.variables.add(
+                            var.to_string(),
+                            Entry::new_variable(&types_transformed[idx]),
+                        );
+                    }
+                }
+                let return_type_from_block = self.function_block(block)?;
+                if !return_type_from_block
+                    .exp_type
+                    .equal_type(&type_return, &self)
+                {
+                    return Err(format!(
+                        "return types differ on function: {:?} != {:?}",
+                        return_type_from_block.exp_type, type_return
+                    ));
+                }
+                self.end_scope();
+                let function_type =
+                    FunctionEntry::new(types_transformed, return_type_from_block.exp_type);
+                Ok(ExpressionType::new(
+                    None,
+                    Rc::new(Type::Function(function_type)),
+                ))
             }
 
             Expression::Assignment(name, expr) => {
-                let expr_type = self.translation_expression(&expr.as_ref().node)?;
+                let expr_type = self.translation_expression(&mut expr.as_mut().node)?;
                 let type_variable = self
                     .variables
                     .get(name)
@@ -362,8 +433,8 @@ impl<'a> SemanticAnalysis<'a> {
             }
 
             Expression::BinaryOp(left, right, op) => {
-                let left_type = self.translation_expression(&left.node)?;
-                let right_type = self.translation_expression(&right.node)?;
+                let left_type = self.translation_expression(&mut left.node)?;
+                let right_type = self.translation_expression(&mut right.node)?;
                 match op {
                     OpType::Add => {
                         if let (Type::Int, Type::Int) =
@@ -401,6 +472,12 @@ mod test {
             let arr: [int] = [1,2,3];
             let string_combined: string = \"sss\" + \"www\" + \"qqq\";
             let v: [[[[[[string]]]]]] = [[], [[[[[\"string\"]]]]]];
+
+            let func_00: (string) -> string = fn (x: string) -> string { return x; };
+            let func_01: ([[[[string]]]], int) -> string = fn (x: [[[[string]]]], y: int) -> string { 
+                let v: int = y + y + y + y + y + 1 + 2 + 3;                
+                return \"cool\"; 
+            };
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
