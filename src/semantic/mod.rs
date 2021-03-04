@@ -5,32 +5,76 @@ use crate::hash_undo::HashUndo;
 use std::rc::Rc;
 // use std::{collections::HashUndo, unimplemented};
 
+/// Asserts that the type is equal to the expected
+/// `$self` is the self that is the context to the function call
+/// returns an error if the types are not equal
+/// *Examples*:
+/// - int == int.
+/// - Arr<int> == Arr<void> (Arr<void> only happens because of an empty array)
+/// - string != int
+/// type str = string;
+/// - string != str <-- (??) discuss about this
+macro_rules! assert_type {
+    ($cond:expr, $expected:expr, $self:expr) => {
+        if !$cond.equal_type($expected, $self) {
+            return Err(format!("expected type={:?}, got={:?}", $expected, $cond));
+        }
+    };
+}
+
+/// Type contains all the types of the programming language
 #[derive(PartialEq, Debug)]
 pub enum Type {
+    /// Scope is a internal symbol that serves the purpose of indicating on when the scope
+    /// starts
     Scope,
+
+    /// Void has many purposes, when a function doesn't have a return type it's a void.
+    /// An empty array is of type void.
     Void,
+
+    /// Integer type
     Int,
+
+    /// String type
     String,
+
+    /// Struct type
     Record(Vec<(String, Rc<Type>)>),
+
+    /// Function type
     Function(FunctionEntry),
+
+    /// Array type
     Array(Rc<Type>),
+
+    /// Null type
     Nil,
+
+    /// Name type is for recursive types (Rc<Type> will be later filled)
+    /// *This behaviour isn't implemented yet.*
     Name(String, Rc<Type>),
 }
 
+/// Function entry is the type of a function
 #[derive(PartialEq, Debug)]
 pub struct FunctionEntry {
+    /// Parameter types
     formals: Vec<Rc<Type>>,
+
+    /// Expected type result of a function
     result: Rc<Type>,
 }
 
 impl FunctionEntry {
+    /// Returns a new function entry
     fn new(formals: Vec<Rc<Type>>, result: Rc<Type>) -> Self {
         Self { formals, result }
     }
 }
 
 #[derive(PartialEq)]
+/// This was supposed to be an entry for variables, but I think we will just use types
 // !! I think we should delete this and just use Type enum
 enum Entry {
     Variable(Rc<Type>),
@@ -51,20 +95,28 @@ impl Entry {
     }
 }
 
+/// Semantic Analysis struct that contains all the types and variables
 struct SemanticAnalysis<'a> {
+    /// Types hashmap where we relate the name of a type to it's recursive type
     types: HashUndo<'a, String, Rc<Type>>,
+
+    /// Variables maps a string to its type
     variables: HashUndo<'a, String, Entry>,
 }
 
+/// Intermediate Representation *unimplemented*
 #[derive(Copy, Clone, Debug)]
 struct Translation;
 
+/// Expression type (atm the only translation thing) contains the type of an expression
+/// and the possible IR.
 struct ExpressionType {
     exp_type: Rc<Type>,
     translation: Option<Translation>,
 }
 
 impl Type {
+    /// equal_type, read `assert_type!` macro
     fn equal_type<'a>(
         self: &Rc<Self>,
         other: &Rc<Self>,
@@ -96,6 +148,7 @@ impl ExpressionType {
 }
 
 impl<'a> SemanticAnalysis<'a> {
+    /// returns a new semantic analysis with int, string and void
     pub fn new() -> Self {
         let mut me = Self {
             types: HashUndo::new(),
@@ -107,6 +160,7 @@ impl<'a> SemanticAnalysis<'a> {
         me
     }
 
+    /// expects type handles type equality
     pub fn expects_type(&self, the_type: &Type, expects: &Type) -> Result<(), String> {
         if the_type != expects {
             return Err(
@@ -117,6 +171,7 @@ impl<'a> SemanticAnalysis<'a> {
         Ok(())
     }
 
+    /// translates a variable expression
     pub fn translation_variable(
         &mut self,
         variable: &Expression,
@@ -266,7 +321,15 @@ impl<'a> SemanticAnalysis<'a> {
         ExpressionType::new(None, self.types.get(&"void".to_string()).unwrap().clone())
     }
 
-    fn function_block(
+    fn get_int(&self) -> ExpressionType {
+        ExpressionType::new(None, self.types.get(&"int".to_string()).unwrap().clone())
+    }
+
+    fn get_string(&self) -> ExpressionType {
+        ExpressionType::new(None, self.types.get(&"string".to_string()).unwrap().clone())
+    }
+
+    fn block(
         &mut self,
         statements: &mut Vec<NodeToken<Statement>>,
     ) -> Result<ExpressionType, String> {
@@ -350,13 +413,41 @@ impl<'a> SemanticAnalysis<'a> {
             }
 
             Expression::If {
-                block,
+                ref mut block,
                 else_ifs,
                 last_else,
                 condition,
             } => {
                 //
-                todo!("implement IF")
+                self.begin_scope();
+
+                let condition = self.translation_expression(&mut condition.node)?;
+                assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
+                let mut expression_types = vec![];
+                let type_checked_block = self.block(block)?;
+                expression_types.push(type_checked_block);
+                if let Some(else_ifs) = else_ifs {
+                    for else_if in else_ifs {
+                        let else_exp = self.translation_expression(&mut else_if.node)?;
+                        assert_type!(else_exp.exp_type, &expression_types[0].exp_type, &self);
+                        expression_types.push(else_exp);
+                    }
+                }
+                let _ = if let Some(last_else) = last_else {
+                    let b = self.block(last_else)?;
+                    assert_type!(b.exp_type, &expression_types[0].exp_type, &self);
+                    Some(b)
+                } else {
+                    None
+                };
+                self.end_scope();
+                Ok(ExpressionType::new(
+                    None,
+                    expression_types
+                        .pop()
+                        .expect("expression types is empty")
+                        .exp_type,
+                ))
             }
 
             Expression::FunctionDefinition {
@@ -395,7 +486,7 @@ impl<'a> SemanticAnalysis<'a> {
                         );
                     }
                 }
-                let return_type_from_block = self.function_block(block)?;
+                let return_type_from_block = self.block(block)?;
                 if !return_type_from_block
                     .exp_type
                     .equal_type(&type_return, &self)
@@ -472,7 +563,36 @@ mod test {
                 return \"cool\"; 
             };
             let func_02: () -> void = fn() { let thing: string = \"\"; };
+            let func_03: (int) -> string = fn (x: int) -> string {
+                let v: int = x + x;                
+                return \"nice\";
+            }
+            v = [[], [[[[[\"string\"]]]]]];
+        ";
+        let mut program = parser::Parser::new(lexer::Lexer::new(code))
+            .parse_program()
+            .expect("parsing to go well");
+        let mut analysis = semantic::SemanticAnalysis::new();
+        let thing = analysis
+            .type_check_statement(&mut program.node)
+            .expect("not an error");
+    }
 
+    #[test]
+    fn test_types_02() {
+        let code = "
+            let t: int = 1;
+            let f: () -> int = fn() -> int {
+                let variable: int = if t {
+                        return t;
+                    } else if t {
+                        return 0;
+                    } else {
+                        return 5;
+                    };
+                return variable + 5;
+            };
+            return f;
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
