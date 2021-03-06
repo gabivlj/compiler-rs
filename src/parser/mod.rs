@@ -49,25 +49,26 @@ impl<'a> Parser<'a> {
 
     // pairs ::= [<identifier> ':' <identifier> [';']+ ]+
     // consumes the last brace
-    fn parse_record_pairs(&mut self) -> Result<Vec<(String, String)>, String> {
+    fn parse_record_pairs(&mut self) -> Result<Vec<(String, TypeExpr)>, String> {
         let mut pairs = Vec::new();
         while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
             let identifier = self.next_token();
             self.expect_current(&TokenType::DoubleDot)?;
             self.next_token();
-            let type_identifier = self.next_token();
+            let t = self.parse_type_notation()?;
+            pairs.push((identifier.to_string(), t));
             self.expect_current(&TokenType::Semicolon)?;
             self.skip_semicolons();
-            if let TokenType::Ident(identifier_string_left) = &identifier {
-                if let TokenType::Ident(identifier_string_right) = &type_identifier {
-                    pairs.push((
-                        identifier_string_left.to_string(),
-                        identifier_string_right.to_string(),
-                    ));
-                    continue;
-                }
-            }
-            return Err("expected a identifier on type declaration".to_string());
+            // if let TokenType::Ident(identifier_string_left) = &identifier {
+            //     if let TokenType::Ident(identifier_string_right) = &type_identifier {
+            //         pairs.push((
+            //             identifier_string_left.to_string(),
+            //             identifier_string_right.to_string(),
+            //         ));
+            //         continue;
+            //     }
+            // }
+            // return Err("expected a identifier on type declaration".to_string());
         }
         if pairs.len() <= 0 {
             return Err("needs at least minimum 1 pair on type expression".to_string());
@@ -78,24 +79,10 @@ impl<'a> Parser<'a> {
     }
 
     // ::= <identifier> |  ('{' <pairs> '}' )
-    fn parse_type_expression(&mut self) -> Result<NodeToken<Expression>, String> {
+    fn parse_type_expression(&mut self) -> Result<TypeExpr, String> {
         self.expect_current(&TokenType::Assign)?;
         self.next_token();
-        let possible_identifier = self.next_token();
-        if let TokenType::Ident(identifier) = &possible_identifier {
-            Ok(NodeToken::new(
-                Expression::Id(identifier.clone()),
-                possible_identifier,
-            ))
-        } else if let TokenType::LBrace = &possible_identifier {
-            let type_pairs = self.parse_record_pairs()?;
-            Ok(NodeToken::new(
-                Expression::Struct(type_pairs),
-                possible_identifier,
-            ))
-        } else {
-            Err("Unexpected token on type expression".to_string())
-        }
+        self.parse_type_notation()
     }
 
     // parses the following gramatical rule
@@ -111,7 +98,10 @@ impl<'a> Parser<'a> {
                 type_token,
             ))
         } else {
-            Err("expected identifier on type declaration".to_string())
+            Err(format!(
+                "expected identifier on type declaration, not {}",
+                token_ident
+            ))
         }
     }
 
@@ -202,6 +192,10 @@ impl<'a> Parser<'a> {
                 }
                 self.next_token();
                 Ok(TypeExpr::Array(Box::new(result)))
+            }
+            TokenType::LBrace => {
+                let pairs = self.parse_record_pairs()?;
+                Ok(TypeExpr::Struct(pairs))
             }
             TokenType::LParen => {
                 let mut vec_of_types: Vec<TypeExpr> = vec![];
@@ -384,6 +378,18 @@ mod test {
                 }",
                 "let func: (String, [String], () -> Int) -> Int = fn (x: String, y: [String], z: () -> Int) -> Int { return (1 + z()); };",
             ),
+            (
+                "let func: 
+                    (String, [String], () -> Int) -> Int = fn(x: String, y: [String], z: () -> Int) -> Int { 
+                    return 1 + z(); 
+                }",
+                "let func: (String, [String], () -> Int) -> Int = fn (x: String, y: [String], z: () -> Int) -> Int { return (1 + z()); };",
+            ),
+            (" type struct = {
+                thing: thing;
+                thing01: thing_02;
+                thing3: [thing_02];
+            }", "type struct = { thing: thing; thing01: thing_02; thing3: [thing_02]; };")
         ];
         for test in input.iter() {
             let program = get_program(test.0);

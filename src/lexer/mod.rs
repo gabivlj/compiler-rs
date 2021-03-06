@@ -43,7 +43,7 @@ impl<'a> Lexer<'a> {
             "return" => TokenType::Return,
             "else" => TokenType::Else,
             "for" => TokenType::For,
-            "struct" => TokenType::Struct,
+            // "struct" => TokenType::Struct,
             "type" => TokenType::Type,
             _ => TokenType::Ident(Cow::Borrowed(string)),
         }

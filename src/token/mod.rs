@@ -31,7 +31,6 @@ pub enum TokenType {
     True,
     False,
     For,
-    Struct,
     Type,
     DoubleDot,
     LBracket,
@@ -81,7 +80,6 @@ impl std::fmt::Display for TokenType {
             TokenType::Function => write!(f, "fn"),
             TokenType::For => write!(f, "for"),
             TokenType::Int(u64) => write!(f, "{}", u64),
-            TokenType::Struct => write!(f, "struct"),
             TokenType::Type => write!(f, "type"),
         }
     }

@@ -205,6 +205,48 @@ impl<'a> Parser<'a> {
         ))
     }
 
+    /// key_pairs ::=  [<identifier> '=' <expression>] [',' <identifier> '=' <expression>]* '}'
+    fn parse_key_pairs(&mut self) -> Result<Vec<(String, NodeToken<Expression>)>, String> {
+        let mut vec_pairs = vec![];
+        while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
+            if vec_pairs.len() >= 1 {
+                println!("{:?}", vec_pairs);
+                self.expect_current(&TokenType::Comma)?;
+                self.next_token();
+            }
+            if let TokenType::Ident(identifier) = self.next_token() {
+                self.expect_current(&TokenType::Assign)?;
+                self.next_token();
+                vec_pairs.push((
+                    identifier.to_string(),
+                    self.parse_expression(Precedence::Lowest)?,
+                ));
+            } else {
+                return Err(format!("expected identifier on key expression"));
+            }
+        }
+        self.expect_current(&TokenType::RBrace)?;
+        self.next_token();
+        Ok(vec_pairs)
+    }
+
+    /// struct_init ::= <identifier> '=>' '{' <key_pairs>
+    fn parse_struct_init(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        if let Expression::Id(type_id) = &left.node {
+            let id = type_id.to_string();
+            let arrow = self.next_token();
+            self.expect_current(&TokenType::LBrace)?;
+            self.next_token();
+            let key_pairs = self.parse_key_pairs()?;
+            Ok(NodeToken::new(Expression::TypeInit(id, key_pairs), arrow))
+        } else {
+            Err(format!("expected type identifier, got={:?}", left))
+        }
+    }
+
     /// get the left expression and with the current token return an infix expression
     /// if the result is an error, it will return the expression ownership to the caller,
     /// otherwise, it will return as normal the infix parse.
@@ -223,6 +265,7 @@ impl<'a> Parser<'a> {
             | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
             TokenType::LBracket => Ok(self.parse_index_access(left)),
             TokenType::LParen => Ok(self.parse_fn_call(left)),
+            TokenType::Arrow => Ok(self.parse_struct_init(left)),
             _ => Err(left),
         }
     }
@@ -310,7 +353,7 @@ impl<'a> Parser<'a> {
             TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
             TokenType::Plus | TokenType::Minus => Precedence::Sum,
             TokenType::Asterisk | TokenType::Slash => Precedence::Product,
-            TokenType::LParen | TokenType::LBracket => Precedence::Call,
+            TokenType::LParen | TokenType::LBracket | TokenType::Arrow => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }
@@ -355,6 +398,19 @@ mod test {
         )];
         for test in input.iter() {
             let program = get_program(test.0);
+            assert_eq!(test.1, program[0].str());
+        }
+    }
+
+    #[test]
+    fn test_parse_struct_init() {
+        let input = [(
+            "let thing: Thing = Thing -> {w=1, h=2, q=Thing->{w=4}}",
+            "let thing: Thing = Thing -> {w=1, h=2, q=Thing -> {w=4}};",
+        )];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            assert_eq!(program.len(), 1);
             assert_eq!(test.1, program[0].str());
         }
     }

@@ -66,11 +66,11 @@ pub enum Expression {
 
     Boolean(bool),
 
-    Struct(Vec<(String, String)>),
-
     String(String),
 
     IndexAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
+
+    TypeInit(String, Vec<(String, NodeToken<Expression>)>),
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +78,7 @@ pub enum TypeExpr {
     Variable(String),
     Array(Box<TypeExpr>),
     Function(Vec<TypeExpr>, Option<Box<TypeExpr>>),
+    Struct(Vec<(String, TypeExpr)>),
 }
 
 use std::fmt;
@@ -96,13 +97,19 @@ impl std::fmt::Display for TypeExpr {
                     f.write_fmt(format_args!("({}) -> void", joined))
                 }
             }
+            TypeExpr::Struct(pairs) => {
+                let pairs_str = pairs.iter().fold(String::new(), |prev, now| {
+                    format!("{}{}: {}; ", prev, now.0, now.1)
+                });
+                f.write_fmt(format_args!("{{ {}}}", pairs_str))
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    Type(String, NodeToken<Expression>),
+    Type(String, TypeExpr),
 
     /// While contains the conditional expr that keeps the loop going and
     /// the block of code
@@ -160,7 +167,7 @@ impl Statement {
                     .iter()
                     .fold(String::new(), |prev, now| format!("{} {}", prev, now.str()))
             ),
-            Statement::Type(name, type_expr) => format!("type {} = {};", name, type_expr.str()),
+            Statement::Type(name, type_expr) => format!("type {} = {};", name, type_expr),
             _ => String::with_capacity(0),
         }
     }
@@ -199,16 +206,23 @@ impl Expression {
             Expression::IndexAccess(left, right) => {
                 format!("{}[{}]", left.node.string(), right.node.string())
             }
+
             Expression::Assignment(left, right) => {
                 format!("{} = {}", left.node.string(), right.node.string())
             }
+
             Expression::String(identifier) => format!("\"{}\"", identifier.to_string()),
+
             Expression::Id(identifier) => identifier.to_string(),
+
             Expression::Number(n) => n.to_string(),
+
             Expression::PrefixOp(op, val) => format!("({}{})", op.to_string(), val.str()),
+
             Expression::BinaryOp(left, right, op) => {
                 format!("({} {} {})", left.str(), op.to_string(), right.str())
             }
+
             Expression::Array(expressions) => format!(
                 "[{}]",
                 expressions
@@ -217,9 +231,11 @@ impl Expression {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+
             Expression::Call(id, params) => {
                 format!("{}{}", id.str(), call_parameters_to_string(params))
             }
+
             Expression::FunctionDefinition {
                 parameters,
                 types,
@@ -235,6 +251,7 @@ impl Expression {
                     now.str()
                 ))
             ),
+
             Expression::If {
                 condition,
                 last_else,
@@ -281,13 +298,18 @@ impl Expression {
                     last_else_string
                 )
             }
-            Expression::Boolean(bool) => format!("{}", bool),
-            Expression::Struct(pairs) => {
-                let pairs_str = pairs.iter().fold(String::new(), |prev, now| {
-                    format!("{}{}: {}; ", prev, now.0, now.1)
-                });
-                format!("{{ {}}}", pairs_str)
+
+            Expression::TypeInit(type_name, pairs) => {
+                let s = pairs
+                    .iter()
+                    .map(|pair| format!("{}={}", pair.0, pair.1.node.string()))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{} -> {{{}}}", type_name, s)
             }
+
+            Expression::Boolean(bool) => format!("{}", bool),
+
             _ => unimplemented!(),
         }
     }

@@ -2,7 +2,7 @@
 
 use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
-use std::rc::Rc;
+use std::{rc::Rc, unimplemented};
 // use std::{collections::HashUndo, unimplemented};
 
 /// Asserts that the type is equal to the expected
@@ -194,6 +194,7 @@ impl<'a> SemanticAnalysis<'a> {
         }
     }
 
+    /// unwraps a Type::Name type, else just clones the type
     fn actual_type(maybe_a_name: &Rc<Type>) -> Rc<Type> {
         if let Type::Name(_, underlying_type) = maybe_a_name.as_ref() {
             return SemanticAnalysis::actual_type(&underlying_type);
@@ -201,6 +202,7 @@ impl<'a> SemanticAnalysis<'a> {
         return maybe_a_name.clone();
     }
 
+    /// unboxes array type
     fn unbox_array(&self, array_type: &Rc<Type>) -> Rc<Type> {
         if let Type::Array(t) = array_type.as_ref() {
             self.unbox_array(t)
@@ -209,13 +211,29 @@ impl<'a> SemanticAnalysis<'a> {
         }
     }
 
+    /// unwrap_type_expr translates TypeExpr to Type
     fn unwrap_type_expr(&mut self, type_expr: &TypeExpr) -> Option<Rc<Type>> {
         match type_expr {
+            TypeExpr::Struct(attributes) => {
+                let mut attributes_parsed = Vec::with_capacity(attributes.len());
+                for att in attributes {
+                    let type_unw = self.unwrap_type_expr(&att.1);
+                    if let Some(the_type) = type_unw {
+                        attributes_parsed.push((att.0.clone(), the_type));
+                    } else {
+                        return None;
+                    }
+                }
+                Some(Rc::new(Type::Record(attributes_parsed)))
+            }
+
             TypeExpr::Variable(s) => Some(self.types.get(s)?.clone()),
+
             TypeExpr::Array(type_expr) => {
                 let boxed_type = self.unwrap_type_expr(type_expr.as_ref())?;
                 Some(Rc::new(Type::Array(boxed_type)))
             }
+
             TypeExpr::Function(params, return_type) => {
                 let mut has_none = false;
                 let types: Vec<Rc<Type>> = params
@@ -244,9 +262,12 @@ impl<'a> SemanticAnalysis<'a> {
                     ))))
                 }
             }
+
+            _ => unimplemented!(),
         }
     }
 
+    /// begin_scope variables
     fn begin_scope(&mut self) {
         self.types
             .add("@_<scope~start>_".to_string(), Rc::new(Type::Scope));
@@ -254,6 +275,7 @@ impl<'a> SemanticAnalysis<'a> {
             .add("@_<scope~start>_".to_string(), Entry::Scope);
     }
 
+    /// end_scope of types and variables added in this scope
     fn end_scope(&mut self) {
         let mut possible_scope_type = self.types.pop();
         let mut found_scope_start = false;
@@ -277,7 +299,10 @@ impl<'a> SemanticAnalysis<'a> {
         assert!(found_scope_start);
     }
 
-    pub fn type_check_statement(&mut self, stmt: &mut Statement) -> Result<ExpressionType, String> {
+    pub fn type_check_statement(
+        &mut self,
+        stmt: &'a mut Statement,
+    ) -> Result<ExpressionType, String> {
         match stmt {
             Statement::Program(statements) => {
                 self.begin_scope();
@@ -312,6 +337,14 @@ impl<'a> SemanticAnalysis<'a> {
                 // NOTE: Be careful on this, maybe we should return it
                 self.translation_expression(&mut expr.node)?;
             }
+
+            Statement::Type(name, type_expression) => {
+                let ty = self
+                    .unwrap_type_expr(type_expression)
+                    .ok_or(format!("unknown type {}", name))?;
+                self.types.add_ref(name, ty);
+            }
+
             _ => unimplemented!(),
         }
         return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
@@ -331,7 +364,7 @@ impl<'a> SemanticAnalysis<'a> {
 
     fn block(
         &mut self,
-        statements: &mut Vec<NodeToken<Statement>>,
+        statements: &'a mut Vec<NodeToken<Statement>>,
     ) -> Result<ExpressionType, String> {
         let mut expression_types: Vec<ExpressionType> = vec![];
         let mut type_atm: Option<Rc<Type>> = None;
@@ -353,14 +386,19 @@ impl<'a> SemanticAnalysis<'a> {
                 type_atm = Some(last_type);
             }
         }
+
         Ok(ExpressionType::new(
             None,
             type_atm.unwrap_or(Rc::new(Type::Void)),
         ))
     }
 
-    fn translation_expression(&mut self, expr: &mut Expression) -> Result<ExpressionType, String> {
+    fn translation_expression(
+        &mut self,
+        expr: &'a mut Expression,
+    ) -> Result<ExpressionType, String> {
         match expr {
+            // Expression::Struct
             Expression::String(_) => {
                 let string = self
                     .types
@@ -593,6 +631,31 @@ mod test {
                 return variable + 5;
             };
             return f;
+        ";
+        let mut program = parser::Parser::new(lexer::Lexer::new(code))
+            .parse_program()
+            .expect("parsing to go well");
+        let mut analysis = semantic::SemanticAnalysis::new();
+        let thing = analysis
+            .type_check_statement(&mut program.node)
+            .expect("not an error");
+    }
+
+    #[test]
+    fn test_types_03() {
+        let code = "
+            type thing = int;
+            type thing_02 = thing;
+            type thing_03 = thing_02;
+            type thing_04 = thing_03;
+            type thing_05 = thing_04;
+            type thing_06 = thing_05;
+            type struct = {
+                thing: thing;
+                thing01: thing_02;
+                thing3: [thing_02];
+            }
+            let wow: thing_05 = 3;
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
