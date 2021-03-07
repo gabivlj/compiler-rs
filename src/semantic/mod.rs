@@ -393,6 +393,52 @@ impl<'a> SemanticAnalysis<'a> {
         ))
     }
 
+    fn structs_are_equal(&mut self, the_true_type: &Type, right: &Type) -> bool {
+        if let Type::Nil = the_true_type {
+            return true;
+        }
+        if let Type::Nil = right {
+            return true;
+        }
+        if let Type::Record(the_true_type) = the_true_type {
+            if let Type::Record(right) = right {
+                if the_true_type.len() != right.len() {
+                    return false;
+                }
+                for i in 0..the_true_type.len() {
+                    let ty = self.get_type_of_struct(&the_true_type[i].0, right);
+                    if let Some(ty) = ty {
+                        println!(
+                            "{} {:?} vs {:?}",
+                            the_true_type[i].0, the_true_type[i].1, ty
+                        );
+                        if !the_true_type[i].1.equal_type(ty, self) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn get_type_of_struct<'b, T: AsRef<str>>(
+        &mut self,
+        key: &'b T,
+        record: &'b Vec<(String, Rc<Type>)>,
+    ) -> Option<&'b Rc<Type>> {
+        let key = key.as_ref();
+        for pair in record {
+            if pair.0 == key {
+                return Some(&pair.1);
+            }
+        }
+        None
+    }
+
     fn translation_expression(
         &mut self,
         expr: &'a mut Expression,
@@ -554,6 +600,44 @@ impl<'a> SemanticAnalysis<'a> {
                 }
             }
 
+            Expression::TypeInit(type_name, pairs) => {
+                let type_to_check = self.types.get(type_name).ok_or("unknown type")?.clone();
+                if let Type::Record(type_struct) = type_to_check.as_ref() {
+                    let mut pair_types: Vec<(String, Rc<Type>)> = vec![];
+                    for pair in pairs {
+                        let ty = self.translation_expression(&mut pair.1.node)?;
+                        let true_type = self.get_type_of_struct(&pair.0, type_struct);
+                        if true_type.is_none() {
+                            return Err(format!(
+                                "unknown type in struct {}, `{}`",
+                                type_name, pair.0
+                            ));
+                        }
+                        let true_type = true_type.unwrap();
+                        if !ty.exp_type.equal_type(true_type, &self) {
+                            return Err(format!(
+                                "expected type {:?}, got={:?}",
+                                true_type, ty.exp_type
+                            ));
+                        }
+                        pair_types.push((pair.0.clone(), ty.exp_type));
+                    }
+                    let struct_type = Type::Record(pair_types);
+                    if !self.structs_are_equal(&type_to_check, &struct_type) {
+                        return Err(format!(
+                            "bad construction of type {}, expected {:?} and got {:?}",
+                            type_name, type_to_check, struct_type
+                        ));
+                    }
+                    Ok(ExpressionType::new(None, type_to_check.clone()))
+                } else {
+                    return Err(format!(
+                        "type constructor {} is not a record or struct",
+                        type_name
+                    ));
+                }
+            }
+
             Expression::BinaryOp(left, right, op) => {
                 let left_type = self.translation_expression(&mut left.node)?;
                 let right_type = self.translation_expression(&mut right.node)?;
@@ -650,12 +734,29 @@ mod test {
             type thing_04 = thing_03;
             type thing_05 = thing_04;
             type thing_06 = thing_05;
-            type struct = {
+            let wow: thing_05 = 3;
+            type a_struct = {
                 thing: thing;
                 thing01: thing_02;
                 thing3: [thing_02];
-            }
-            let wow: thing_05 = 3;
+            }            
+            type b_struct = {
+                thing: thing;
+                thing01: thing_02;
+                thing3: [thing_02];
+                a_struct: a_struct;
+            };
+            let a_struct_init: a_struct = a_struct -> {
+                thing=1,
+                thing01=1,
+                thing3=[1]
+            };
+            let a_struct_init: b_struct = b_struct -> {
+                thing=1,
+                thing01=1,
+                thing3=[1],
+                a_struct=a_struct_init
+            };
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
