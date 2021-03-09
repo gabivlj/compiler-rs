@@ -33,6 +33,7 @@ pub enum TokenType {
     For,
     Type,
     DoubleDot,
+    Dot,
     LBracket,
     RBracket,
     Arrow,
@@ -81,6 +82,7 @@ impl std::fmt::Display for TokenType {
             TokenType::For => write!(f, "for"),
             TokenType::Int(u64) => write!(f, "{}", u64),
             TokenType::Type => write!(f, "type"),
+            TokenType::Dot => write!(f, "."),
         }
     }
 }

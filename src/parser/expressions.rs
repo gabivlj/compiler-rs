@@ -87,6 +87,12 @@ impl<'a> Parser<'a> {
     /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         // println!("{:?} -> {:?}", self.current_token, self.peek_token);
+        if self.can_assign {
+            if let TokenType::Ident(_) = &self.current_token {
+            } else {
+                self.can_assign = false;
+            }
+        }
         match self.current_token {
             TokenType::LBracket => self.parse_array_expression(),
             TokenType::Quotes(_) => self.parse_string(),
@@ -195,10 +201,12 @@ impl<'a> Parser<'a> {
         &mut self,
         left: NodeToken<Expression>,
     ) -> Result<NodeToken<Expression>, String> {
+        let prev_assign = self.can_assign;
         let t = self.next_token();
         let right = self.parse_expression(Precedence::Lowest)?;
         self.expect_current(&TokenType::RBracket)?;
         self.next_token();
+        self.can_assign = prev_assign;
         Ok(NodeToken::new(
             Expression::IndexAccess(Box::new(left), Box::new(right)),
             t,
@@ -247,6 +255,24 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_assign(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        if !self.can_assign {
+            return Err(format!("can't assign expression {}", left.node.string()));
+        }
+
+        let equal = self.next_token();
+        let right = self.parse_expression(Precedence::Lowest)?;
+        let assign_node = NodeToken::new(
+            Expression::Assignment(Box::new(left), Box::new(right)),
+            equal,
+        );
+        self.can_assign = true;
+        Ok(assign_node)
+    }
+
     /// get the left expression and with the current token return an infix expression
     /// if the result is an error, it will return the expression ownership to the caller,
     /// otherwise, it will return as normal the infix parse.
@@ -254,6 +280,12 @@ impl<'a> Parser<'a> {
         &mut self,
         left: NodeToken<Expression>,
     ) -> Result<Result<NodeToken<Expression>, String>, NodeToken<Expression>> {
+        if let TokenType::Dot = self.current_token {
+        } else if let TokenType::Assign = self.current_token {
+        } else if let TokenType::LBracket = self.current_token {
+        } else {
+            self.can_assign = false;
+        }
         match self.current_token {
             TokenType::Minus
             | TokenType::Slash
@@ -263,7 +295,9 @@ impl<'a> Parser<'a> {
             | TokenType::Asterisk
             | TokenType::Equal
             | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
+            TokenType::Assign => Ok(self.parse_assign(left)),
             TokenType::LBracket => Ok(self.parse_index_access(left)),
+            TokenType::Dot => Ok(self.parse_property_access(left)),
             TokenType::LParen => Ok(self.parse_fn_call(left)),
             TokenType::Arrow => Ok(self.parse_struct_init(left)),
             _ => Err(left),
@@ -340,20 +374,38 @@ impl<'a> Parser<'a> {
     /// Parse expressions inside parenthesis
     fn parse_grouped_expression(&mut self) -> Result<NodeToken<Expression>, String> {
         assert_eq!(self.current_token, TokenType::LParen);
+        let prev_assign = self.can_assign;
         self.next_token();
-        let exp = self.parse_expression(Precedence::Lowest);
+        self.can_assign = true;
+        let exp = self.parse_expression(Precedence::Lowest)?;
+        self.can_assign = prev_assign;
+        println!("{}", exp.node.string());
         self.expect_current(&TokenType::RParen)?;
         self.next_token();
-        exp
+        Ok(exp)
+    }
+
+    fn parse_property_access(
+        &mut self,
+        left: NodeToken<Expression>,
+    ) -> Result<NodeToken<Expression>, String> {
+        //
+        let dot = self.next_token();
+        let expression = self.parse_expression(Precedence::Lowest)?;
+        let access = Expression::PropertyAccess(Box::new(left), Box::new(expression));
+        let node = NodeToken::new(access, dot);
+        Ok(node)
     }
 
     fn get_precedence(token: &TokenType) -> Precedence {
         match token {
-            TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
+            TokenType::Assign | TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
             TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
             TokenType::Plus | TokenType::Minus => Precedence::Sum,
             TokenType::Asterisk | TokenType::Slash => Precedence::Product,
-            TokenType::LParen | TokenType::LBracket | TokenType::Arrow => Precedence::Call,
+            TokenType::LParen | TokenType::LBracket | TokenType::Arrow | TokenType::Dot => {
+                Precedence::Call
+            }
             _ => Precedence::Lowest,
         }
     }
@@ -381,12 +433,14 @@ mod test {
     #[test]
     fn test_parse_str() {
         let input = [(
-            "let thing: string = \"hellow worldw\";",
-            "let thing: string = \"hellow worldw\";",
+            "let thing: string = \"hellow worldw\";
+            s=3;
+            wwww[1*2+4+(s=3)]=1; ",
+            "let thing: string = \"hellow worldw\"; s = 3 wwww[(((1 * 2) + 4) + s = 3)] = 1",
         )];
         for test in input.iter() {
-            let program = get_program(test.0);
-            assert_eq!(test.1, program[0].str());
+            let program_text = get_program_text(test.0);
+            assert_eq!(test.1, program_text);
         }
     }
 
@@ -495,6 +549,16 @@ mod test {
             panic!("not a program")
         };
         program
+    }
+
+    fn get_program_text(input: &str) -> String {
+        let program = get_program(input);
+        let text = program
+            .iter()
+            .map(|el| format!("{}", el.str()))
+            .collect::<Vec<String>>()
+            .join(" ");
+        text
     }
 
     fn test_integer(expr: &NodeToken<Expression>, expected: i64) {

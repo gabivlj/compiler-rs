@@ -71,6 +71,8 @@ pub enum Expression {
     IndexAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 
     TypeInit(String, Vec<(String, NodeToken<Expression>)>),
+
+    PropertyAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 }
 
 #[derive(Clone, Debug)]

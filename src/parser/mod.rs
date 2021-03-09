@@ -11,6 +11,7 @@ pub struct Parser<'a> {
     current_token: TokenType,
     lexer: Lexer<'a>,
     peek_token: TokenType,
+    can_assign: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -19,6 +20,7 @@ impl<'a> Parser<'a> {
             lexer,
             current_token: TokenType::EOF,
             peek_token: TokenType::EOF,
+            can_assign: true,
         };
         p.next_token();
         p.next_token();
@@ -106,12 +108,13 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_stmt(&mut self) -> Result<NodeToken<Statement>, String> {
+        self.can_assign = true;
         match self.current_token {
             TokenType::Let => self.parse_let_statement(),
             TokenType::Return => self.parse_return_statement(),
             TokenType::For => self.parse_for_statement(),
             TokenType::Type => self.parse_type(),
-            TokenType::Ident(ref id) => {
+            /*TokenType::Ident(ref id) => {
                 if self.is_peek(&TokenType::LBracket) {
                     let id = id.clone();
                     let ident = self.next_token();
@@ -156,7 +159,7 @@ impl<'a> Parser<'a> {
                 } else {
                     self.parse_expression_statement()
                 }
-            }
+            }*/
             _ => self.parse_expression_statement(),
         }
     }

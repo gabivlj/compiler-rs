@@ -122,6 +122,14 @@ impl Type {
         other: &Rc<Self>,
         semantic: &'a SemanticAnalysis<'a>,
     ) -> bool {
+        if let Type::Nil = self.as_ref() {
+            return true;
+        }
+
+        if let Type::Nil = other.as_ref() {
+            return true;
+        }
+
         if let Type::Array(_) = self.as_ref() {
             if let Type::Array(_) = other.as_ref() {
             } else {
@@ -157,6 +165,8 @@ impl<'a> SemanticAnalysis<'a> {
         me.types.add("int".to_string(), Rc::new(Type::Int));
         me.types.add("string".to_string(), Rc::new(Type::String));
         me.types.add("void".to_string(), Rc::new(Type::Void));
+        me.variables
+            .add("nil".to_string(), Entry::Variable(Rc::new(Type::Nil)));
         me
     }
 
@@ -757,6 +767,8 @@ mod test {
                 thing3=[1],
                 a_struct=a_struct_init
             };
+            let null: [string] = nil;
+            null = [\"ww\"];
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
