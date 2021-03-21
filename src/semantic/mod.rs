@@ -959,6 +959,13 @@ mod test {
             for 1 == 1 || 1 {
 
             }
+
+            type struct_thing = {
+                a: int;
+            };
+            type struct_things = [struct_thing];
+            let things: struct_things = [struct_thing -> {a=1}];
+            let thing: int = things[0].a;
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
