@@ -60,8 +60,7 @@ pub enum Expression {
 
     PrefixOp(OpType, Box<NodeToken<Expression>>),
 
-    Block(Vec<NodeToken<Statement>>),
-
+    // Block(Vec<NodeToken<Statement>>),
     Array(Vec<NodeToken<Expression>>),
 
     Boolean(bool),
@@ -311,6 +310,10 @@ impl Expression {
             }
 
             Expression::Boolean(bool) => format!("{}", bool),
+
+            Expression::PropertyAccess(left, right) => {
+                format!("{}.{}", left.node.string(), right.node.string())
+            }
 
             _ => unimplemented!(),
         }

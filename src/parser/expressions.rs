@@ -263,7 +263,6 @@ impl<'a> Parser<'a> {
         if !self.can_assign {
             return Err(format!("can't assign expression {}", left.node.string()));
         }
-
         let equal = self.next_token();
         let right = self.parse_expression(Precedence::Lowest)?;
         let assign_node = NodeToken::new(
@@ -394,7 +393,7 @@ impl<'a> Parser<'a> {
     ) -> Result<NodeToken<Expression>, String> {
         //
         let dot = self.next_token();
-        let expression = self.parse_expression(Precedence::Lowest)?;
+        let expression = self.parse_expression(Precedence::Call)?;
         let access = Expression::PropertyAccess(Box::new(left), Box::new(expression));
         let node = NodeToken::new(access, dot);
         Ok(node)
@@ -466,6 +465,16 @@ mod test {
             "let thing: Thing = Thing -> {w=1, h=2, q=Thing->{w=4}}",
             "let thing: Thing = Thing -> {w=1, h=2, q=Thing -> {w=4}};",
         )];
+        for test in input.iter() {
+            let program = get_program(test.0);
+            assert_eq!(program.len(), 1);
+            assert_eq!(test.1, program[0].str());
+        }
+    }
+
+    #[test]
+    fn test_parse_property_access() {
+        let input = [("a.b.c + a.d.s", "(a.b.c + a.d.s)")];
         for test in input.iter() {
             let program = get_program(test.0);
             assert_eq!(program.len(), 1);

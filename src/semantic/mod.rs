@@ -774,8 +774,74 @@ impl<'a> SemanticAnalysis<'a> {
                     type_function.exp_type
                 ));
             }
-            _ => unimplemented!(),
+
+            Expression::Boolean(_) => Ok(ExpressionType::new(None, Rc::new(Type::Int))),
+
+            Expression::IndexAccess(possible_array, index) => {
+                let possible_array = self.translation_expression(&mut possible_array.node)?;
+                let index = self.translation_expression(&mut index.node)?;
+                if let Type::Array(inner) = possible_array.exp_type.as_ref() {
+                    assert_type!(
+                        index.exp_type,
+                        self.types.get(&"int".to_string()).unwrap(),
+                        self
+                    );
+                    Ok(ExpressionType::new(None, inner.clone()))
+                } else {
+                    Err(format!(
+                        "expected array type on index access, got={:?}",
+                        possible_array.exp_type
+                    ))
+                }
+            }
+
+            Expression::PropertyAccess(left, right) => self.property_access(left, right),
+
+            Expression::PrefixOp(_op_type, _expr) => {
+                //
+                unimplemented!()
+            }
         }
+    }
+
+    /// recursive function that unwraps a property access until the end
+    fn property_access(
+        &mut self,
+        left: &'a mut NodeToken<Expression>,
+        right: &'a mut NodeToken<Expression>,
+    ) -> Result<ExpressionType, String> {
+        // This is really bad, because we must allocate here the error
+        let err = Err(format!(
+            "can't access {} with property {}",
+            left.node.string(),
+            right.node.string()
+        ));
+        // because the node is borrowed here                vv
+        let possible_struct = self.translation_expression(&mut left.node)?;
+        if let Type::Record(types) = possible_struct.exp_type.as_ref() {
+            let str = if let Expression::PropertyAccess(left, _) = &right.node {
+                if let Expression::Id(s) = &left.node {
+                    s.to_string()
+                } else {
+                    unreachable!()
+                }
+            } else if let Expression::Id(s) = &right.node {
+                s.to_string()
+            } else {
+                unreachable!();
+            };
+            if let Some((_ident, the_type)) = types.iter().find(|el| el.0 == str) {
+                if let Expression::PropertyAccess(left, right) = &mut right.node {
+                    return self.property_access(left, right);
+                } else {
+                    return Ok(ExpressionType::new(None, the_type.clone()));
+                }
+            } else {
+                return Err(format!("unknown property {}", str));
+            }
+        }
+        // how do we borrow here then?
+        err
     }
 }
 
@@ -871,23 +937,25 @@ mod test {
                 thing01=1,
                 thing3=[1]
             };
+            let thingy: thing = a_struct_init.thing;
             let a_struct_init: b_struct = b_struct -> {
                 thing=1,
                 thing01=1,
                 thing3=[1],
                 a_struct=a_struct_init
             };
+            let thingy: thing = a_struct_init.a_struct.thing;
+            let thingy: a_struct = a_struct_init.a_struct;
+            let thingy: thing = thingy.thing;            
+            let thingy_02: thing_02 = a_struct_init.a_struct.thing3[0];
             let null: [string] = nil;
             null = [\"ww\"];
             type recursive = {
                 a: recursive;b: int;
             };
             let thing: recursive = recursive -> { a = recursive -> {a = null, b = 3}, b = 2};
-
             if 1 + 1 > 1 && \"ss\" + \"sss\" != \"ssz\" {
-
             }
-
             for 1 == 1 || 1 {
 
             }

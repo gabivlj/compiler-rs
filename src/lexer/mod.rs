@@ -149,6 +149,7 @@ impl<'a> Lexer<'a> {
             '{' => TokenType::LBrace,
             '}' => TokenType::RBrace,
             ',' => TokenType::Comma,
+            '.' => TokenType::Dot,
             '-' => match self.peek_possible_two_len('>') {
                 Some(_) => {
                     self.next();
