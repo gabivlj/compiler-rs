@@ -329,6 +329,15 @@ impl<'a> SemanticAnalysis<'a> {
                 self.end_scope();
                 return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
             }
+
+            Statement::While(condition, block) => {
+                let condition = self.translation_expression(&mut condition.node)?;
+                // if condition_type.
+                assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
+                let type_checked_block = self.block(block)?;
+                return Ok(ExpressionType::new(None, type_checked_block.exp_type));
+            }
+
             Statement::Var(variable, expression, type_name) => {
                 let variable_type = self.translation_expression(&mut expression.as_mut().node)?;
                 let t = self
@@ -459,12 +468,95 @@ impl<'a> SemanticAnalysis<'a> {
         None
     }
 
+    fn handle_bin_op(
+        &mut self,
+        left: &'a mut Expression,
+        right: &'a mut Expression,
+        operation: OpType,
+    ) -> Result<ExpressionType, String> {
+        match operation {
+            OpType::Add => {
+                // We do the translation here because we might refactor this to other behaviours
+                // also, if we translate above the `match` we encounter a borrow checker error
+                // on the error case
+                let translation_left = self.translation_expression(left)?;
+                let translation_right = self.translation_expression(right)?;
+                assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
+                let type_of_thing = translation_left.exp_type.clone();
+                // we do this ifs because later on we will include
+                // custom behaviour for expression
+                // (or create a function on IR that does this)
+                if let Type::String = type_of_thing.as_ref() {
+                    Ok(ExpressionType::new(None, translation_left.exp_type))
+                } else if let Type::Int = type_of_thing.as_ref() {
+                    Ok(ExpressionType::new(None, translation_left.exp_type))
+                } else if let Type::Array(_) = type_of_thing.as_ref() {
+                    Ok(ExpressionType::new(None, translation_left.exp_type))
+                } else {
+                    Err(format!(
+                        "can't operate using expression of type {:?}",
+                        type_of_thing
+                    ))
+                }
+            }
+
+            OpType::Equal | OpType::NotEqual => {
+                // This should be changed
+                let translation_left = self.translation_expression(left)?;
+                let translation_right = self.translation_expression(right)?;
+                assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
+                Ok(ExpressionType::new(
+                    None,
+                    self.types.get(&"int".to_string()).unwrap().clone(),
+                ))
+            }
+
+            OpType::And
+            | OpType::Or
+            | OpType::Divide
+            | OpType::Multiply
+            | OpType::Substract
+            | OpType::GreaterThan
+            | OpType::LessThan => {
+                let translation_left = self.translation_expression(left)?;
+                let translation_right = self.translation_expression(right)?;
+                assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
+                assert_type!(
+                    translation_left.exp_type,
+                    &self.types.get(&"int".to_string()).unwrap(),
+                    self
+                );
+                Ok(ExpressionType::new(None, translation_left.exp_type))
+            }
+
+            _ => Err(format!(
+                "unimplemented operation {} {} {:?}",
+                left.string(),
+                right.string(),
+                operation
+            )),
+        }
+    }
+
+    fn translate_bin_op(
+        &mut self,
+        operation: &'a mut Expression,
+    ) -> Result<ExpressionType, String> {
+        if let Expression::BinaryOp(left, right, op_type) = operation {
+            self.handle_bin_op(&mut left.node, &mut right.node, *op_type)
+        } else {
+            Err(format!(
+                "expression {} is not a binary operation",
+                operation.string()
+            ))
+        }
+    }
+
     fn translation_expression(
         &mut self,
         expr: &'a mut Expression,
     ) -> Result<ExpressionType, String> {
         match expr {
-            // Expression::Struct
             Expression::String(_) => {
                 let string = self
                     .types
@@ -522,9 +614,7 @@ impl<'a> SemanticAnalysis<'a> {
                 last_else,
                 condition,
             } => {
-                //
                 self.begin_scope();
-
                 let condition = self.translation_expression(&mut condition.node)?;
                 assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
                 let mut expression_types = vec![];
@@ -658,27 +748,7 @@ impl<'a> SemanticAnalysis<'a> {
                 }
             }
 
-            Expression::BinaryOp(left, right, op) => {
-                let left_type = self.translation_expression(&mut left.node)?;
-                let right_type = self.translation_expression(&mut right.node)?;
-                match op {
-                    OpType::Add => {
-                        if let (Type::Int, Type::Int) =
-                            (left_type.exp_type.as_ref(), right_type.exp_type.as_ref())
-                        {
-                            return Ok(ExpressionType::new(None, Rc::new(Type::Int)));
-                        } else {
-                            if let (Type::String, Type::String) =
-                                (left_type.exp_type.as_ref(), right_type.exp_type.as_ref())
-                            {
-                                return Ok(ExpressionType::new(None, Rc::new(Type::String)));
-                            }
-                            return Err("Expected integer/string type on add operation".to_string());
-                        }
-                    }
-                    _ => unimplemented!(),
-                }
-            }
+            Expression::BinaryOp(_, _, _) => self.translate_bin_op(expr),
 
             Expression::Call(left, parameters) => {
                 let type_function = self.translation_expression(&mut left.node)?;
@@ -813,7 +883,15 @@ mod test {
                 a: recursive;b: int;
             };
             let thing: recursive = recursive -> { a = recursive -> {a = null, b = 3}, b = 2};
-            ";
+
+            if 1 + 1 > 1 && \"ss\" + \"sss\" != \"ssz\" {
+
+            }
+
+            for 1 == 1 || 1 {
+
+            }
+        ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
             .expect("parsing to go well");

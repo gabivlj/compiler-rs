@@ -37,6 +37,8 @@ pub enum TokenType {
     LBracket,
     RBracket,
     Arrow,
+    And,
+    Or,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -83,6 +85,8 @@ impl std::fmt::Display for TokenType {
             TokenType::Int(u64) => write!(f, "{}", u64),
             TokenType::Type => write!(f, "type"),
             TokenType::Dot => write!(f, "."),
+            TokenType::And => write!(f, "&&"),
+            TokenType::Or => write!(f, "||"),
         }
     }
 }

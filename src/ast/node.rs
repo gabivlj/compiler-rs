@@ -383,6 +383,8 @@ impl From<&TokenType> for OpType {
             TokenType::GreaterThan => OpType::GreaterThan,
             TokenType::LessThan => OpType::LessThan,
             TokenType::Bang => OpType::Bang,
+            TokenType::And => OpType::And,
+            TokenType::Or => OpType::Or,
             _ => panic!("unknown operator {}", value),
         }
     }

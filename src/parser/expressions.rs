@@ -7,12 +7,13 @@ use crate::token::TokenType;
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest = 0,
-    Equals = 1,
-    LessGreater = 2,
-    Sum = 3,
-    Product = 4,
-    Prefix = 5,
-    Call = 6,
+    Ands = 1,
+    Equals = 2,
+    LessGreater = 3,
+    Sum = 4,
+    Product = 5,
+    Prefix = 6,
+    Call = 7,
 }
 
 impl<'a> Parser<'a> {
@@ -294,7 +295,9 @@ impl<'a> Parser<'a> {
             | TokenType::Plus
             | TokenType::Asterisk
             | TokenType::Equal
-            | TokenType::NotEqual => Ok(self.parse_infix_expression(left)),
+            | TokenType::NotEqual
+            | TokenType::And
+            | TokenType::Or => Ok(self.parse_infix_expression(left)),
             TokenType::Assign => Ok(self.parse_assign(left)),
             TokenType::LBracket => Ok(self.parse_index_access(left)),
             TokenType::Dot => Ok(self.parse_property_access(left)),
@@ -399,6 +402,7 @@ impl<'a> Parser<'a> {
 
     fn get_precedence(token: &TokenType) -> Precedence {
         match token {
+            TokenType::And | TokenType::Or => Precedence::Ands,
             TokenType::Assign | TokenType::Equal | TokenType::NotEqual => Precedence::Equals,
             TokenType::LessThan | TokenType::GreaterThan => Precedence::LessGreater,
             TokenType::Plus | TokenType::Minus => Precedence::Sum,
@@ -692,6 +696,7 @@ mod test {
     fn test_operator_precedence_parsing() {
         let input = [
             ("-a * b", "((-a) * b)"),
+            ("-a * b && -a * b != 0 || 5 == 5", "((((-a) * b) && (((-a) * b) != 0)) || (5 == 5))"),
             ("!-a", "(!(-a))"),
             ("a + b + c", "((a + b) + c)"),
             ("a + b - c", "((a + b) - c)"),

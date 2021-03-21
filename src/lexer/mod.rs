@@ -118,6 +118,26 @@ impl<'a> Lexer<'a> {
                     TokenType::Illegal("expected a \" when declaring a string".to_string())
                 }
             }
+            '&' => match self.peek_possible_two_len('&') {
+                Some(_) => {
+                    self.next();
+                    TokenType::And
+                }
+                None => {
+                    self.next();
+                    TokenType::Illegal(format!("expected a '&', got {}", self.char()))
+                }
+            },
+            '|' => match self.peek_possible_two_len('|') {
+                Some(_) => {
+                    self.next();
+                    TokenType::Or
+                }
+                None => {
+                    self.next();
+                    TokenType::Illegal(format!("expected a '|', got {}", self.char()))
+                }
+            },
             '[' => TokenType::LBracket,
             ']' => TokenType::RBracket,
             ':' => TokenType::DoubleDot,
