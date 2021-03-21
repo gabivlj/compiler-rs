@@ -739,7 +739,7 @@ impl<'a> SemanticAnalysis<'a> {
                             type_name, type_to_check, struct_type
                         ));
                     }
-                    Ok(ExpressionType::new(None, type_to_check.clone()))
+                    Ok(ExpressionType::new(None, self.actual_type(&type_to_check)))
                 } else {
                     return Err(format!(
                         "type constructor {} is not a record or struct",
@@ -767,7 +767,10 @@ impl<'a> SemanticAnalysis<'a> {
                             ));
                         }
                     }
-                    return Ok(ExpressionType::new(None, entry_fn.result.clone()));
+                    return Ok(ExpressionType::new(
+                        None,
+                        self.actual_type(&entry_fn.result),
+                    ));
                 }
                 return Err(format!(
                     "can't call a non function variable: {:?}",
@@ -786,7 +789,7 @@ impl<'a> SemanticAnalysis<'a> {
                         self.types.get(&"int".to_string()).unwrap(),
                         self
                     );
-                    Ok(ExpressionType::new(None, inner.clone()))
+                    Ok(ExpressionType::new(None, self.actual_type(inner)))
                 } else {
                     Err(format!(
                         "expected array type on index access, got={:?}",
@@ -834,7 +837,7 @@ impl<'a> SemanticAnalysis<'a> {
                 if let Expression::PropertyAccess(left, right) = &mut right.node {
                     return self.property_access(left, right);
                 } else {
-                    return Ok(ExpressionType::new(None, the_type.clone()));
+                    return Ok(ExpressionType::new(None, self.actual_type(the_type)));
                 }
             } else {
                 return Err(format!("unknown property {}", str));
@@ -966,6 +969,23 @@ mod test {
             type struct_things = [struct_thing];
             let things: struct_things = [struct_thing -> {a=1}];
             let thing: int = things[0].a;
+
+            type e = {
+                e: e;
+                b: [[[e]]];
+                c: int;
+            };
+
+            let deep:e = e -> {
+                e=null,
+                b=null,
+                c=1
+            };
+
+            let more_e: e = deep.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e;
+            let more_e: e = more_e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e;
+            let finally: int = more_e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.e.b[0][0][0].e.e.e.e.e.b[0][0][121212].c;
+
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
