@@ -2,7 +2,7 @@
 
 use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
-use std::{rc::Rc, unimplemented};
+use std::{cell::RefCell, rc::Rc, unimplemented};
 // use std::{collections::HashUndo, unimplemented};
 
 /// Asserts that the type is equal to the expected
@@ -53,7 +53,7 @@ pub enum Type {
 
     /// Name type is for recursive types (Rc<Type> will be later filled)
     /// *This behaviour isn't implemented yet.*
-    Name(String, Rc<Type>),
+    Name(String),
 }
 
 /// Function entry is the type of a function
@@ -130,6 +130,14 @@ impl Type {
             return true;
         }
 
+        if let Type::Name(name) = self.as_ref() {
+            return other.equal_type(semantic.types.get(name).unwrap(), semantic);
+        }
+
+        if let Type::Name(name) = other.as_ref() {
+            return self.equal_type(semantic.types.get(name).unwrap(), semantic);
+        }
+
         if let Type::Array(_) = self.as_ref() {
             if let Type::Array(_) = other.as_ref() {
             } else {
@@ -192,10 +200,7 @@ impl<'a> SemanticAnalysis<'a> {
                 let entry = self.variables.get(&id);
                 if let Some(entry) = entry {
                     if let Entry::Variable(type_var) = entry {
-                        return Ok(ExpressionType::new(
-                            None,
-                            SemanticAnalysis::actual_type(type_var),
-                        ));
+                        return Ok(ExpressionType::new(None, self.actual_type(type_var)));
                     }
                 }
                 return Err(format!("undefined variable={}", identifier));
@@ -205,9 +210,9 @@ impl<'a> SemanticAnalysis<'a> {
     }
 
     /// unwraps a Type::Name type, else just clones the type
-    fn actual_type(maybe_a_name: &Rc<Type>) -> Rc<Type> {
-        if let Type::Name(_, underlying_type) = maybe_a_name.as_ref() {
-            return SemanticAnalysis::actual_type(&underlying_type);
+    fn actual_type(&self, maybe_a_name: &Rc<Type>) -> Rc<Type> {
+        if let Type::Name(underlying_type_name) = maybe_a_name.as_ref() {
+            return self.types.get(&underlying_type_name).unwrap().clone();
         }
         return maybe_a_name.clone();
     }
@@ -234,7 +239,9 @@ impl<'a> SemanticAnalysis<'a> {
                         return None;
                     }
                 }
-                Some(Rc::new(Type::Record(attributes_parsed)))
+
+                let this_type = Rc::new(Type::Record(attributes_parsed));
+                Some(this_type)
             }
 
             TypeExpr::Variable(s) => Some(self.types.get(s)?.clone()),
@@ -349,9 +356,12 @@ impl<'a> SemanticAnalysis<'a> {
             }
 
             Statement::Type(name, type_expression) => {
+                self.begin_scope();
+                self.types.add_ref(name, Rc::new(Type::Name(name.clone())));
                 let ty = self
                     .unwrap_type_expr(type_expression)
                     .ok_or(format!("unknown type {}", name))?;
+                self.end_scope();
                 self.types.add_ref(name, ty);
             }
 
@@ -669,6 +679,31 @@ impl<'a> SemanticAnalysis<'a> {
                     _ => unimplemented!(),
                 }
             }
+
+            Expression::Call(left, parameters) => {
+                let type_function = self.translation_expression(&mut left.node)?;
+                if let Type::Function(entry_fn) = type_function.exp_type.as_ref() {
+                    for (i, parameter) in parameters.iter_mut().enumerate() {
+                        let type_parameter = self.translation_expression(&mut parameter.node)?;
+                        if !type_parameter
+                            .exp_type
+                            .equal_type(&entry_fn.formals[i], self)
+                        {
+                            return Err(format!(
+                                "expected type for parameter {} => {:?}, got={:?}",
+                                i + 1,
+                                entry_fn.formals[i],
+                                type_parameter.exp_type
+                            ));
+                        }
+                    }
+                    return Ok(ExpressionType::new(None, entry_fn.result.clone()));
+                }
+                return Err(format!(
+                    "can't call a non function variable: {:?}",
+                    type_function.exp_type
+                ));
+            }
             _ => unimplemented!(),
         }
     }
@@ -724,6 +759,11 @@ mod test {
                     };
                 return variable + 5;
             };
+            let expects_integer: int = f();
+            let more_complex_fn: (string, string) -> string = fn(s: string, s2: string) -> string {
+                return s + s2;
+            };
+            let expects_string: string = more_complex_fn(\"sss\", \"sss\");  
             return f;
         ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
@@ -769,7 +809,11 @@ mod test {
             };
             let null: [string] = nil;
             null = [\"ww\"];
-        ";
+            type recursive = {
+                a: recursive;b: int;
+            };
+            let thing: recursive = recursive -> { a = recursive -> {a = null, b = 3}, b = 2};
+            ";
         let mut program = parser::Parser::new(lexer::Lexer::new(code))
             .parse_program()
             .expect("parsing to go well");
