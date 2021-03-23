@@ -1,8 +1,5 @@
-use crate::{
-    string_interning::{StringId, StringInternal},
-    token::TokenType,
-};
-use std::{boxed::Box, unimplemented};
+use crate::{string_interning::StringId, token::TokenType};
+use std::boxed::Box;
 
 #[derive(Debug, Clone)]
 pub struct NodeToken<T> {
@@ -19,8 +16,6 @@ impl<T: Clone> NodeToken<T> {
         Box::new(Self::new(node, token))
     }
 }
-
-use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub enum Expression {
@@ -172,7 +167,7 @@ impl Statement {
                     .fold(String::new(), |prev, now| format!("{} {}", prev, now.str()))
             ),
             Statement::Type(name, type_expr) => format!("type {} = {};", name, type_expr),
-            _ => String::with_capacity(0),
+            // _ => String::with_capacity(0),
         }
     }
 }
@@ -316,9 +311,7 @@ impl Expression {
 
             Expression::PropertyAccess(left, right) => {
                 format!("{}.{}", left.node.string(), right.node.string())
-            }
-
-            _ => unimplemented!(),
+            } // _ => unimplemented!(),
         }
     }
 }
@@ -399,6 +392,7 @@ impl From<&TokenType> for OpType {
 mod test {
     #[allow(unused_imports)]
     use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
+    #[allow(unused_imports)]
     use crate::string_interning::{StringId, StringInternal};
     #[allow(unused_imports)]
     use crate::token::{Token, TokenType};

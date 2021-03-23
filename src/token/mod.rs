@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::string_interning::{StringId, StringInternal};
 
 #[derive(Debug, PartialEq, Clone, Copy)]

@@ -1,10 +1,8 @@
 mod expressions;
 
-use std::unimplemented;
-
-use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
+use crate::ast::node::{NodeToken, Statement, TypeExpr};
 use crate::lexer::Lexer;
-use crate::string_interning::{StringId, StringInternal};
+use crate::string_interning::StringId;
 use crate::token::TokenType;
 use expressions::Precedence;
 
@@ -254,7 +252,6 @@ impl<'a> Parser<'a> {
                 self.next_token();
             }
             Ok(NodeToken::new(
-                // TODO:
                 Statement::Var(name_s, Box::new(expr), type_notation),
                 token,
             ))

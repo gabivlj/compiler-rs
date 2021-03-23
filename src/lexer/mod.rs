@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use crate::{string_interning::StringInternal, token::TokenType};
-use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
 

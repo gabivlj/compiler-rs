@@ -1,7 +1,6 @@
-use std::borrow::BorrowMut;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
-use std::{borrow::Borrow, mem::MaybeUninit};
+use std::mem::MaybeUninit;
 use std::{borrow::Cow, cmp::PartialEq};
 
 struct Node<'a, T, S>

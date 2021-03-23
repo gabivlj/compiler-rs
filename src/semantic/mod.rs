@@ -6,7 +6,7 @@ use crate::{
     ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr},
     string_interning::StringInternal,
 };
-use std::{cell::RefCell, rc::Rc, unimplemented};
+use std::{rc::Rc, unimplemented};
 // use std::{collections::HashUndo, unimplemented};
 
 /// Asserts that the type is equal to the expected
@@ -282,8 +282,6 @@ impl<'a> SemanticAnalysis<'a> {
                     ))))
                 }
             }
-
-            _ => unimplemented!(),
         }
     }
 
@@ -844,9 +842,13 @@ impl<'a> SemanticAnalysis<'a> {
 }
 
 mod test {
+    #[allow(unused_imports)]
     use crate::ast;
+    #[allow(unused_imports)]
     use crate::lexer;
+    #[allow(unused_imports)]
     use crate::parser;
+    #[allow(unused_imports)]
     use crate::semantic;
 
     #[test]
@@ -874,7 +876,7 @@ mod test {
             .parse_program()
             .expect("parsing to go well");
         let mut analysis = semantic::SemanticAnalysis::new();
-        let thing = analysis
+        let _thing = analysis
             .type_check_statement(&mut program.node)
             .expect("not an error");
     }
@@ -904,7 +906,7 @@ mod test {
             .parse_program()
             .expect("parsing to go well");
         let mut analysis = semantic::SemanticAnalysis::new();
-        let thing = analysis
+        let _thing = analysis
             .type_check_statement(&mut program.node)
             .expect("not an error");
     }
@@ -986,7 +988,7 @@ mod test {
             .parse_program()
             .expect("parsing to go well");
         let mut analysis = semantic::SemanticAnalysis::new();
-        let thing = analysis
+        let _thing = analysis
             .type_check_statement(&mut program.node)
             .expect("not an error");
     }

@@ -1,5 +1,3 @@
-use std::unimplemented;
-
 use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::parser::Parser;
 use crate::string_interning::{StringId, StringInternal};
@@ -592,7 +590,7 @@ mod test {
         } else {
             panic!("not an identifier");
         };
-        assert_eq!(StringInternal::get_id(id), "variable");
+        assert_eq!(string!(id), "variable");
         assert_eq!(format!("{}", token), "variable");
     }
 
