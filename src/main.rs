@@ -1,6 +1,21 @@
 #![feature(maybe_uninit_uninit_array)]
 #[macro_use]
 extern crate lazy_static;
+
+#[macro_use]
+macro_rules! string_id {
+    ($s:expr) => {
+        StringInternal::add_string($s)
+    };
+}
+
+#[macro_use]
+macro_rules! string {
+    ($s:expr) => {
+        StringInternal::get_id($s)
+    };
+}
+
 pub mod ast;
 pub mod hash_undo;
 pub mod lexer;
@@ -20,7 +35,7 @@ fn main() {
     use lexer::Lexer;
     use parser::Parser;
     let s = "
-    let fibonacci: fib = fn(x) {
+    let fibonacci: fib = fn(x: __s) {
       if (x == 0) {
         0
       } else {
@@ -32,10 +47,9 @@ fn main() {
       }
     };
     fibonacci(35);
-"
-    .repeat(1000);
+";
     let elapsed = std::time::Instant::now();
-    for _ in 0..10 {
+    for _ in 0..1_000_000 {
         let l = Lexer::new(&s);
         let p = Parser::new(l).parse_program();
         p.unwrap();

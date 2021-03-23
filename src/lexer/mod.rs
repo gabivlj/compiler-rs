@@ -45,7 +45,7 @@ impl<'a> Lexer<'a> {
             "for" => TokenType::For,
             // "struct" => TokenType::Struct,
             "type" => TokenType::Type,
-            _ => TokenType::Ident(StringInternal::add_string(string)),
+            _ => TokenType::Ident(string_id!(string)),
         }
     }
 
@@ -113,11 +113,9 @@ impl<'a> Lexer<'a> {
             '"' => {
                 let quotes = self.read_quotes();
                 if let Some(quotes) = quotes {
-                    TokenType::Quotes(StringInternal::add_string(quotes))
+                    TokenType::Quotes(string_id!(quotes))
                 } else {
-                    TokenType::Illegal(StringInternal::add_string(
-                        "expected a \" when declaring a string",
-                    ))
+                    TokenType::Illegal(string_id!("expected a \" when declaring a string"))
                 }
             }
             '&' => match self.peek_possible_two_len('&') {
@@ -127,10 +125,7 @@ impl<'a> Lexer<'a> {
                 }
                 None => {
                     self.next();
-                    TokenType::Illegal(StringInternal::add_string(format!(
-                        "expected a '&', got {}",
-                        self.char()
-                    )))
+                    TokenType::Illegal(string_id!(format!("expected a '&', got {}", self.char())))
                 }
             },
             '|' => match self.peek_possible_two_len('|') {
@@ -140,10 +135,7 @@ impl<'a> Lexer<'a> {
                 }
                 None => {
                     self.next();
-                    TokenType::Illegal(StringInternal::add_string(format!(
-                        "expected a '|', got {}",
-                        self.char()
-                    )))
+                    TokenType::Illegal(string_id!(format!("expected a '|', got {}", self.char())))
                 }
             },
             '[' => TokenType::LBracket,
@@ -196,7 +188,7 @@ impl<'a> Lexer<'a> {
                         // validate integer
                         let valid_integer = string.parse::<u64>();
                         if valid_integer.is_err() {
-                            return TokenType::Illegal(StringInternal::add_string(string));
+                            return TokenType::Illegal(string_id!(string));
                         }
                         TokenType::Int(valid_integer.unwrap())
                     }
@@ -271,42 +263,39 @@ mod test {
 
         let tests = vec![
             (TokenType::Let, "let"),
-            (TokenType::Ident(StringInternal::add_string("five")), "five"),
+            (TokenType::Ident(string_id!("five")), "five"),
             (TokenType::Assign, "="),
             (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident(StringInternal::add_string("ten")), "ten"),
+            (TokenType::Ident(string_id!("ten")), "ten"),
             (TokenType::Assign, "="),
             (TokenType::Int(10), "10"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident(StringInternal::add_string("add")), "add"),
+            (TokenType::Ident(string_id!("add")), "add"),
             (TokenType::Assign, "="),
             (TokenType::Function, "fn"),
             (TokenType::LParen, "("),
-            (TokenType::Ident(StringInternal::add_string("x")), "x"),
+            (TokenType::Ident(string_id!("x")), "x"),
             (TokenType::Comma, ","),
-            (TokenType::Ident(StringInternal::add_string("y")), "y"),
+            (TokenType::Ident(string_id!("y")), "y"),
             (TokenType::RParen, ")"),
             (TokenType::LBrace, "{"),
-            (TokenType::Ident(StringInternal::add_string("x")), "x"),
+            (TokenType::Ident(string_id!("x")), "x"),
             (TokenType::Plus, "+"),
-            (TokenType::Ident(StringInternal::add_string("y")), "y"),
+            (TokenType::Ident(string_id!("y")), "y"),
             (TokenType::Semicolon, ";"),
             (TokenType::RBrace, "}"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (
-                TokenType::Ident(StringInternal::add_string("result")),
-                "result",
-            ),
+            (TokenType::Ident(string_id!("result")), "result"),
             (TokenType::Assign, "="),
-            (TokenType::Ident(StringInternal::add_string("add")), "add"),
+            (TokenType::Ident(string_id!("add")), "add"),
             (TokenType::LParen, "("),
-            (TokenType::Ident(StringInternal::add_string("five")), "five"),
+            (TokenType::Ident(string_id!("five")), "five"),
             (TokenType::Comma, ","),
-            (TokenType::Ident(StringInternal::add_string("ten")), "ten"),
+            (TokenType::Ident(string_id!("ten")), "ten"),
             (TokenType::RParen, ")"),
             (TokenType::Semicolon, ";"),
             (TokenType::Bang, "!"),

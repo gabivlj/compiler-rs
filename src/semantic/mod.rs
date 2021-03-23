@@ -174,16 +174,11 @@ impl<'a> SemanticAnalysis<'a> {
             types: HashUndo::new(),
             variables: HashUndo::new(),
         };
-        me.types
-            .add(StringInternal::add_string("int"), Rc::new(Type::Int));
-        me.types
-            .add(StringInternal::add_string("string"), Rc::new(Type::String));
-        me.types
-            .add(StringInternal::add_string("void"), Rc::new(Type::Void));
-        me.variables.add(
-            StringInternal::add_string("nil"),
-            Entry::Variable(Rc::new(Type::Nil)),
-        );
+        me.types.add(string_id!("int"), Rc::new(Type::Int));
+        me.types.add(string_id!("string"), Rc::new(Type::String));
+        me.types.add(string_id!("void"), Rc::new(Type::Void));
+        me.variables
+            .add(string_id!("nil"), Entry::Variable(Rc::new(Type::Nil)));
         me
     }
 
@@ -277,9 +272,7 @@ impl<'a> SemanticAnalysis<'a> {
                     None
                 } else {
                     let return_type_unwrapped = if return_type.is_none() {
-                        self.types
-                            .get(&StringInternal::add_string("void"))
-                            .map(|t| t.clone())
+                        self.types.get(&string_id!("void")).map(|t| t.clone())
                     } else {
                         self.unwrap_type_expr(return_type.as_ref().expect("it's not none"))
                     }?;
@@ -296,12 +289,10 @@ impl<'a> SemanticAnalysis<'a> {
 
     /// begin_scope variables
     fn begin_scope(&mut self) {
-        self.types.add(
-            StringInternal::add_string("@_<scope~start>_"),
-            Rc::new(Type::Scope),
-        );
+        self.types
+            .add(string_id!("@_<scope~start>_"), Rc::new(Type::Scope));
         self.variables
-            .add(StringInternal::add_string("@_<scope~start>_"), Entry::Scope);
+            .add(string_id!("@_<scope~start>_"), Entry::Scope);
     }
 
     /// end_scope of types and variables added in this scope
@@ -390,33 +381,15 @@ impl<'a> SemanticAnalysis<'a> {
     }
 
     fn get_void(&self) -> ExpressionType {
-        ExpressionType::new(
-            None,
-            self.types
-                .get(&StringInternal::add_string("void"))
-                .unwrap()
-                .clone(),
-        )
+        ExpressionType::new(None, self.types.get(&string_id!("void")).unwrap().clone())
     }
 
     fn get_int(&self) -> ExpressionType {
-        ExpressionType::new(
-            None,
-            self.types
-                .get(&StringInternal::add_string("int"))
-                .unwrap()
-                .clone(),
-        )
+        ExpressionType::new(None, self.types.get(&string_id!("int")).unwrap().clone())
     }
 
     fn get_string(&self) -> ExpressionType {
-        ExpressionType::new(
-            None,
-            self.types
-                .get(&StringInternal::add_string("string"))
-                .unwrap()
-                .clone(),
-        )
+        ExpressionType::new(None, self.types.get(&string_id!("string")).unwrap().clone())
     }
 
     fn block(
@@ -531,10 +504,7 @@ impl<'a> SemanticAnalysis<'a> {
                 assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
                 Ok(ExpressionType::new(
                     None,
-                    self.types
-                        .get(&StringInternal::add_string("int"))
-                        .unwrap()
-                        .clone(),
+                    self.types.get(&string_id!("int")).unwrap().clone(),
                 ))
             }
 
@@ -550,7 +520,7 @@ impl<'a> SemanticAnalysis<'a> {
                 assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
                 assert_type!(
                     translation_left.exp_type,
-                    &self.types.get(&StringInternal::add_string("int")).unwrap(),
+                    &self.types.get(&string_id!("int")).unwrap(),
                     self
                 );
                 Ok(ExpressionType::new(None, translation_left.exp_type))
@@ -587,7 +557,7 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::String(_) => {
                 let string = self
                     .types
-                    .get(&StringInternal::add_string("string"))
+                    .get(&string_id!("string"))
                     .expect("string type must be defined");
                 Ok(ExpressionType::new(None, string.clone()))
             }
@@ -599,7 +569,7 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::Number(_) => {
                 let int = self
                     .types
-                    .get(&StringInternal::add_string("int"))
+                    .get(&string_id!("int"))
                     .expect("Integer type must be defined");
                 Ok(ExpressionType::new(None, int.clone()))
             }
@@ -811,7 +781,7 @@ impl<'a> SemanticAnalysis<'a> {
                 if let Type::Array(inner) = possible_array.exp_type.as_ref() {
                     assert_type!(
                         index.exp_type,
-                        self.types.get(&StringInternal::add_string("int")).unwrap(),
+                        self.types.get(&string_id!("int")).unwrap(),
                         self
                     );
                     Ok(ExpressionType::new(None, self.actual_type(inner)))
