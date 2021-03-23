@@ -35,14 +35,14 @@ fn main() {
     use lexer::Lexer;
     use parser::Parser;
     let s = "
-    let fibonacci: fib = fn(x: __s) {
+    let fibonacci: int = fn(x: int) {
       if (x == 0) {
-        0
+        return 0;
       } else {
         if (x == 1) {
           return 1;
         } else {
-          fibonacci(x - 1) + fibonacci(x - 2);
+          return fibonacci(x - 1) + fibonacci(x - 2);
         }
       }
     };
@@ -52,7 +52,10 @@ fn main() {
     for _ in 0..1_000_000 {
         let l = Lexer::new(&s);
         let p = Parser::new(l).parse_program();
-        p.unwrap();
+        let mut p = p.unwrap();
+        semantic::SemanticAnalysis::new()
+            .type_check_statement(&mut p.node)
+            .unwrap();
     }
     println!("elapsed: {}", elapsed.elapsed().as_millis());
 }

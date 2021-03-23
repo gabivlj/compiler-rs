@@ -7,7 +7,40 @@ use crate::{
     string_interning::StringInternal,
 };
 use std::{rc::Rc, unimplemented};
-// use std::{collections::HashUndo, unimplemented};
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+enum Flag {
+    /// If this bit is set it means that the processed self.type_check_statement
+    /// will return *always*, so in the self.block type checking needs to check that
+    /// this bit is set to assure the caller that the type is correct
+    StatementIsSecureToReturn = 0,
+}
+
+type ExpressionAndSecureToReturn = (ExpressionType, bool);
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+enum Bit {
+    One = 1,
+    Zero = 0,
+}
+
+impl Flag {
+    fn set_flag(self, bits: u64, bit: Bit) -> u64 {
+        if let Bit::One = bit {
+            let b = bits | (1 << (self as u64));
+            assert!(self.is_active(b));
+            b
+        } else {
+            let b = bits & (0 << (self as u64));
+            assert!(!self.is_active(b));
+            b
+        }
+    }
+
+    fn is_active(self, bits: u64) -> bool {
+        return (bits & ((1 as u64) << (self as u64))) == 1;
+    }
+}
 
 /// Asserts that the type is equal to the expected
 /// `$self` is the self that is the context to the function call
@@ -25,6 +58,18 @@ macro_rules! assert_type {
         }
     };
 }
+
+// macro_rules! block {
+//     ($self:expr) => {
+//         let ___flag = $self.flags;
+//     };
+// }
+
+// macro_rules! recover_flag {
+//     ($self:expr) => {
+//         $self.flags = ___flag;
+//     };
+// }
 
 /// Type contains all the types of the programming language
 #[derive(PartialEq, Debug)]
@@ -100,12 +145,14 @@ impl Entry {
 }
 
 /// Semantic Analysis struct that contains all the types and variables
-struct SemanticAnalysis<'a> {
+pub struct SemanticAnalysis<'a> {
     /// Types hashmap where we relate the name of a type to it's recursive type
     types: HashUndo<'a, StringId, Rc<Type>>,
 
     /// Variables maps a string to its type
     variables: HashUndo<'a, StringId, Entry>,
+
+    flags: u64,
 }
 
 /// Intermediate Representation *unimplemented*
@@ -114,7 +161,7 @@ struct Translation;
 
 /// Expression type (atm the only translation thing) contains the type of an expression
 /// and the possible IR.
-struct ExpressionType {
+pub struct ExpressionType {
     exp_type: Rc<Type>,
     translation: Option<Translation>,
 }
@@ -173,6 +220,7 @@ impl<'a> SemanticAnalysis<'a> {
         let mut me = Self {
             types: HashUndo::new(),
             variables: HashUndo::new(),
+            flags: 0x0,
         };
         me.types.add(string_id!("int"), Rc::new(Type::Int));
         me.types.add(string_id!("string"), Rc::new(Type::String));
@@ -317,15 +365,21 @@ impl<'a> SemanticAnalysis<'a> {
         assert!(found_scope_start);
     }
 
+    /// type checks statemnet
+    /// Flags it uses: StatementIsSecureToReturn
+    /// Save a copy of the flags
     pub fn type_check_statement(
         &mut self,
         stmt: &'a mut Statement,
     ) -> Result<ExpressionType, String> {
+        self.flags = Flag::StatementIsSecureToReturn.set_flag(self.flags, Bit::One);
         match stmt {
             Statement::Program(statements) => {
                 self.begin_scope();
                 for stmt in statements {
+                    let f = self.flags;
                     self.type_check_statement(&mut stmt.node)?;
+                    self.flags = f;
                 }
                 self.end_scope();
                 return Ok(ExpressionType::new(None, Rc::new(Type::Void)));
@@ -335,7 +389,10 @@ impl<'a> SemanticAnalysis<'a> {
                 let condition = self.translation_expression(&mut condition.node)?;
                 // if condition_type.
                 assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
-                let type_checked_block = self.block(block)?;
+                let f = self.flags;
+                let (type_checked_block, _) = self.block(block)?;
+                self.flags = f;
+                self.flags = Flag::StatementIsSecureToReturn.set_flag(self.flags, Bit::Zero);
                 return Ok(ExpressionType::new(None, type_checked_block.exp_type));
             }
 
@@ -360,7 +417,11 @@ impl<'a> SemanticAnalysis<'a> {
 
             Statement::ExpressionStatement(expr) => {
                 // NOTE: Be careful on this, maybe we should return it
-                self.translation_expression(&mut expr.node)?;
+                let (t, ok_to_return) = self.type_check_if_statement(&mut expr.node)?;
+                if !ok_to_return {
+                    self.flags = Flag::StatementIsSecureToReturn.set_flag(self.flags, Bit::Zero);
+                }
+                return Ok(t);
             }
 
             Statement::Type(name, type_expression) => {
@@ -390,19 +451,129 @@ impl<'a> SemanticAnalysis<'a> {
         ExpressionType::new(None, self.types.get(&string_id!("string")).unwrap().clone())
     }
 
+    fn handle_else_if(
+        &mut self,
+        if_expr: &'a mut Expression,
+    ) -> Result<ExpressionAndSecureToReturn, String> {
+        if let Expression::If {
+            ref mut block,
+            else_ifs: _,
+            last_else: _,
+            condition,
+        } = if_expr
+        {
+            let condition = self.translation_expression(&mut condition.node)?;
+            assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
+            self.block(block)
+        } else {
+            Err(format!("not an else if"))
+        }
+    }
+
+    /// Handles an if expression that is an statement by itself
+    /// If it's not an if it just returns self.translate_expression
+    /// ## Rules
+    /// * If there is a branch that returns Void this function can return Ok and false (false means that this statement is not reliable to end here)
+    /// * If there is a branch that returns differing types (there can be a differing type like void and int but not int string), this will return an error
+    /// * If there is not a branch that returns a differing type and also doesn't return Void, this will return Ok and true
+    fn type_check_if_statement(
+        &mut self,
+        if_expr: &'a mut Expression,
+    ) -> Result<ExpressionAndSecureToReturn, String> {
+        if let Expression::If {
+            ref mut block,
+            else_ifs,
+            last_else,
+            condition,
+        } = if_expr
+        {
+            self.begin_scope();
+            let condition = self.translation_expression(&mut condition.node)?;
+            assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
+            let mut expression_types = vec![];
+            let f = self.flags;
+            let (type_checked_block, reliable_to_return_if) = self.block(block)?;
+            self.flags = f;
+            expression_types.push(type_checked_block);
+            let mut reliable_to_return = reliable_to_return_if;
+            if let Some(else_ifs) = else_ifs {
+                for else_if in else_ifs {
+                    let (else_exp, reliable_to_return_else) =
+                        self.handle_else_if(&mut else_if.node)?;
+                    if let Type::Void = else_exp.exp_type.as_ref() {
+                        // 1st rule applies => This if is unreliable to return
+                        reliable_to_return = false;
+                    } else {
+                        if !reliable_to_return_else {
+                            reliable_to_return = false;
+                        }
+                        assert_type!(else_exp.exp_type, &expression_types[0].exp_type, &self);
+                    }
+                    expression_types.push(else_exp);
+                }
+            }
+            let _ = if let Some(last_else) = last_else {
+                let (b, reliable_to_return_else) = self.block(last_else)?;
+                // println!("{:?}", b.exp_type);
+                if let Type::Void = b.exp_type.as_ref() {
+                    // panic!("UNREALIABLE TO RETURN");
+                    // 1st rule applies => This if is unreliable to return
+                    reliable_to_return = false;
+                } else {
+                    if !reliable_to_return_else {
+                        reliable_to_return = false;
+                    }
+                    assert_type!(b.exp_type, &expression_types[0].exp_type, &self);
+                }
+                Some(b)
+            } else {
+                // 1st rule applies => This if is unreliable to return
+                reliable_to_return = false;
+                None
+            };
+            self.end_scope();
+            Ok((
+                ExpressionType::new(
+                    None,
+                    expression_types
+                        .pop()
+                        .expect("expression types is empty")
+                        .exp_type,
+                ),
+                reliable_to_return,
+            ))
+        } else {
+            self.translation_expression(if_expr).map(|res| (res, false))
+        }
+    }
+
+    /// Parses a list of statements
+    /// ### Rules
+    /// * If there is no return in the list of statements this will return a ExpressionType with a type of `void`
+    /// * If there is always a path that is gonna return, this will return the correct type
     fn block(
         &mut self,
         statements: &'a mut Vec<NodeToken<Statement>>,
-    ) -> Result<ExpressionType, String> {
+    ) -> Result<ExpressionAndSecureToReturn, String> {
         let mut expression_types: Vec<ExpressionType> = vec![];
         let mut type_atm: Option<Rc<Type>> = None;
+        if statements.len() == 0 {
+            return Ok((ExpressionType::new(None, Rc::new(Type::Void)), false));
+        }
+        let mut secure_to_return: bool = false;
         for statement in statements {
+            let f = self.flags;
             let exp_type = self.type_check_statement(&mut statement.node)?;
             let last_type = exp_type.exp_type.clone();
             expression_types.push(exp_type);
             if last_type.as_ref() == &Type::Void {
+                self.flags = f;
                 continue;
             }
+            if Flag::StatementIsSecureToReturn.is_active(self.flags) {
+                secure_to_return = true;
+            }
+            self.flags = f;
             if let Some(current_type) = &type_atm {
                 if !current_type.equal_type(&last_type, &self) {
                     return Err(format!(
@@ -414,11 +585,17 @@ impl<'a> SemanticAnalysis<'a> {
                 type_atm = Some(last_type);
             }
         }
-
-        Ok(ExpressionType::new(
-            None,
-            type_atm.unwrap_or(Rc::new(Type::Void)),
-        ))
+        if type_atm.is_some() {
+            Ok((
+                ExpressionType::new(None, type_atm.unwrap()),
+                secure_to_return,
+            ))
+        } else {
+            Ok((
+                ExpressionType::new(None, Rc::new(Type::Void)),
+                secure_to_return,
+            ))
+        }
     }
 
     fn structs_are_equal(&mut self, the_true_type: &Type, right: &Type) -> bool {
@@ -613,21 +790,39 @@ impl<'a> SemanticAnalysis<'a> {
                 let condition = self.translation_expression(&mut condition.node)?;
                 assert_type!(condition.exp_type, &self.get_int().exp_type, &self);
                 let mut expression_types = vec![];
-                let type_checked_block = self.block(block)?;
+                let (type_checked_block, reliable_to_return) = self.block(block)?;
+                if !reliable_to_return {
+                    return Err(format!(
+                        "an expression if should have a branch that returns always a type"
+                    ));
+                }
                 expression_types.push(type_checked_block);
                 if let Some(else_ifs) = else_ifs {
                     for else_if in else_ifs {
-                        let else_exp = self.translation_expression(&mut else_if.node)?;
+                        let (else_exp, reliable_to_return) =
+                            self.handle_else_if(&mut else_if.node)?;
+                        if !reliable_to_return {
+                            return Err(format!(
+                                "an expression if should have a branch that returns always a type"
+                            ));
+                        }
                         assert_type!(else_exp.exp_type, &expression_types[0].exp_type, &self);
                         expression_types.push(else_exp);
                     }
                 }
                 let _ = if let Some(last_else) = last_else {
-                    let b = self.block(last_else)?;
+                    let (b, reliable_to_return) = self.block(last_else)?;
+                    if !reliable_to_return {
+                        return Err(format!(
+                            "an expression if should have a branch that returns always a type"
+                        ));
+                    }
                     assert_type!(b.exp_type, &expression_types[0].exp_type, &self);
                     Some(b)
                 } else {
-                    None
+                    return Err(format!(
+                        "an expression if should have a branch that returns always a type"
+                    ));
                 };
                 self.end_scope();
                 Ok(ExpressionType::new(
@@ -673,7 +868,10 @@ impl<'a> SemanticAnalysis<'a> {
                             .add(*var, Entry::new_variable(&types_transformed[idx]));
                     }
                 }
-                let return_type_from_block = self.block(block)?;
+                let (return_type_from_block, reliable_to_return) = self.block(block)?;
+                if !reliable_to_return && type_return.as_ref() != &Type::Void {
+                    return Err(format!("a branch of the function doesn't return a type, make sure that you always return"));
+                }
                 if !return_type_from_block
                     .exp_type
                     .equal_type(&type_return, &self)
@@ -992,4 +1190,85 @@ mod test {
             .type_check_statement(&mut program.node)
             .expect("not an error");
     }
+
+    //
+    // --->
+    //
+
+    // TODO: this should pass
+    #[test]
+    fn test_types_04() {
+        let code = "
+            let func_03: (int) -> string = fn (x: int) -> string {
+                if true {
+                    if 1 { 
+                        if 1 {
+                            return \"s\";
+                        }
+                    }
+                }
+                let v: int = x + x;
+                if (v > 3) {
+                    return \"s\";
+                } else if true {} else {                    
+                    return \"s\";
+                }
+                return \"s\";
+            }
+            let func_04: (int) -> string = fn (x: int) -> string {
+                let v: int = x + x;
+                if (v > 3) {
+                    for true {
+                        if true {
+                            return \"ss\";
+                        } else {
+                            return \"ss\";
+                        }
+                    }                    
+                    return \"ss\";
+                } else {
+                    if true {
+                        return if true { return \"sss\"; } else { return \"ss\"; };
+                    } else if false {
+                        return \"ss\"; 
+                    } else {
+                        if true {
+                            return \"ss\"; 
+                        } else {
+                            if true {
+                                return \"ss\";
+                            } else {
+                                if true {
+                                    return \"ss\";
+                                } else if false { return \"s\"; } else {
+                                    return \"ss\";
+                                }
+                                return \"ss\";
+                            }                            
+                            return \"ss\";
+                        }
+                        return \"ss\";
+                    }
+                }
+            }
+        ";
+        let mut program = parser::Parser::new(lexer::Lexer::new(code))
+            .parse_program()
+            .expect("parsing to go well");
+        let mut analysis = semantic::SemanticAnalysis::new();
+        let _thing = analysis
+            .type_check_statement(&mut program.node)
+            .expect("not an error");
+    }
 }
+
+/*
+let func_03: (int) -> string = fn (x: int) -> string {
+          let v: int = x + x;
+          if (v > 3) {
+              return \"s\";
+          } else {
+
+          }
+          return \"s\";
+      }*/

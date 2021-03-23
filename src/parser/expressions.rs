@@ -103,7 +103,7 @@ impl<'a> Parser<'a> {
                 self.next_token(),
             )),
             TokenType::LParen => self.parse_grouped_expression(),
-            TokenType::If => self.parse_if(),
+            TokenType::If => self.parse_if(true),
             TokenType::Minus | TokenType::Bang | TokenType::Plus => self.parse_prefix_expression(),
             TokenType::Function => self.parse_function_expression(),
             _ => Err(format!(
@@ -324,18 +324,27 @@ impl<'a> Parser<'a> {
     }
 
     /// parse if statements
-    fn parse_if(&mut self) -> Result<NodeToken<Expression>, String> {
+    fn parse_if(&mut self, keep_going: bool) -> Result<NodeToken<Expression>, String> {
         self.expect_current(&TokenType::If)?;
         let if_token = self.next_token();
         let condition = self.parse_expression(Precedence::Lowest)?;
         let block = self.parse_block_statement()?;
+        if !keep_going {
+            let expr = Expression::If {
+                block,
+                else_ifs: None,
+                last_else: None,
+                condition: Box::new(condition),
+            };
+            return Ok(NodeToken::new(expr, if_token));
+        }
         let mut wasted_last_else = false;
         let mut ifs = vec![];
         let mut last_else = None;
         while self.is_current(&TokenType::Else) {
             self.next_token();
             if self.is_current(&TokenType::If) && !wasted_last_else {
-                let curr_if = self.parse_if()?;
+                let curr_if = self.parse_if(false)?;
                 ifs.push(curr_if);
             } else if !wasted_last_else {
                 wasted_last_else = true;
