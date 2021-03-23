@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
-use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::hash_undo::HashUndo;
+use crate::string_interning::StringId;
+use crate::{
+    ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr},
+    string_interning::StringInternal,
+};
 use std::{cell::RefCell, rc::Rc, unimplemented};
 // use std::{collections::HashUndo, unimplemented};
 
@@ -40,7 +44,7 @@ pub enum Type {
     String,
 
     /// Struct type
-    Record(Vec<(String, Rc<Type>)>),
+    Record(Vec<(StringId, Rc<Type>)>),
 
     /// Function type
     Function(FunctionEntry),
@@ -53,7 +57,7 @@ pub enum Type {
 
     /// Name type is for recursive types (Rc<Type> will be later filled)
     /// *This behaviour isn't implemented yet.*
-    Name(String),
+    Name(StringId),
 }
 
 /// Function entry is the type of a function
@@ -98,10 +102,10 @@ impl Entry {
 /// Semantic Analysis struct that contains all the types and variables
 struct SemanticAnalysis<'a> {
     /// Types hashmap where we relate the name of a type to it's recursive type
-    types: HashUndo<'a, String, Rc<Type>>,
+    types: HashUndo<'a, StringId, Rc<Type>>,
 
     /// Variables maps a string to its type
-    variables: HashUndo<'a, String, Entry>,
+    variables: HashUndo<'a, StringId, Entry>,
 }
 
 /// Intermediate Representation *unimplemented*
@@ -170,11 +174,16 @@ impl<'a> SemanticAnalysis<'a> {
             types: HashUndo::new(),
             variables: HashUndo::new(),
         };
-        me.types.add("int".to_string(), Rc::new(Type::Int));
-        me.types.add("string".to_string(), Rc::new(Type::String));
-        me.types.add("void".to_string(), Rc::new(Type::Void));
-        me.variables
-            .add("nil".to_string(), Entry::Variable(Rc::new(Type::Nil)));
+        me.types
+            .add(StringInternal::add_string("int"), Rc::new(Type::Int));
+        me.types
+            .add(StringInternal::add_string("string"), Rc::new(Type::String));
+        me.types
+            .add(StringInternal::add_string("void"), Rc::new(Type::Void));
+        me.variables.add(
+            StringInternal::add_string("nil"),
+            Entry::Variable(Rc::new(Type::Nil)),
+        );
         me
     }
 
@@ -196,8 +205,7 @@ impl<'a> SemanticAnalysis<'a> {
     ) -> Result<ExpressionType, String> {
         match variable {
             Expression::Id(identifier) => {
-                let id = identifier.to_string();
-                let entry = self.variables.get(&id);
+                let entry = self.variables.get(identifier);
                 if let Some(entry) = entry {
                     if let Entry::Variable(type_var) = entry {
                         return Ok(ExpressionType::new(None, self.actual_type(type_var)));
@@ -269,7 +277,9 @@ impl<'a> SemanticAnalysis<'a> {
                     None
                 } else {
                     let return_type_unwrapped = if return_type.is_none() {
-                        self.types.get(&"void".to_string()).map(|t| t.clone())
+                        self.types
+                            .get(&StringInternal::add_string("void"))
+                            .map(|t| t.clone())
                     } else {
                         self.unwrap_type_expr(return_type.as_ref().expect("it's not none"))
                     }?;
@@ -286,10 +296,12 @@ impl<'a> SemanticAnalysis<'a> {
 
     /// begin_scope variables
     fn begin_scope(&mut self) {
-        self.types
-            .add("@_<scope~start>_".to_string(), Rc::new(Type::Scope));
+        self.types.add(
+            StringInternal::add_string("@_<scope~start>_"),
+            Rc::new(Type::Scope),
+        );
         self.variables
-            .add("@_<scope~start>_".to_string(), Entry::Scope);
+            .add(StringInternal::add_string("@_<scope~start>_"), Entry::Scope);
     }
 
     /// end_scope of types and variables added in this scope
@@ -349,10 +361,8 @@ impl<'a> SemanticAnalysis<'a> {
                         t, variable_type.exp_type
                     ));
                 }
-                self.variables.add(
-                    variable.to_string(),
-                    Entry::new_variable(&variable_type.exp_type),
-                );
+                self.variables
+                    .add(*variable, Entry::new_variable(&variable_type.exp_type));
             }
 
             Statement::Return(return_expression) => {
@@ -380,15 +390,33 @@ impl<'a> SemanticAnalysis<'a> {
     }
 
     fn get_void(&self) -> ExpressionType {
-        ExpressionType::new(None, self.types.get(&"void".to_string()).unwrap().clone())
+        ExpressionType::new(
+            None,
+            self.types
+                .get(&StringInternal::add_string("void"))
+                .unwrap()
+                .clone(),
+        )
     }
 
     fn get_int(&self) -> ExpressionType {
-        ExpressionType::new(None, self.types.get(&"int".to_string()).unwrap().clone())
+        ExpressionType::new(
+            None,
+            self.types
+                .get(&StringInternal::add_string("int"))
+                .unwrap()
+                .clone(),
+        )
     }
 
     fn get_string(&self) -> ExpressionType {
-        ExpressionType::new(None, self.types.get(&"string".to_string()).unwrap().clone())
+        ExpressionType::new(
+            None,
+            self.types
+                .get(&StringInternal::add_string("string"))
+                .unwrap()
+                .clone(),
+        )
     }
 
     fn block(
@@ -435,12 +463,8 @@ impl<'a> SemanticAnalysis<'a> {
                     return false;
                 }
                 for i in 0..the_true_type.len() {
-                    let ty = self.get_type_of_struct(&the_true_type[i].0, right);
+                    let ty = self.get_type_of_struct(the_true_type[i].0, right);
                     if let Some(ty) = ty {
-                        println!(
-                            "{} {:?} vs {:?}",
-                            the_true_type[i].0, the_true_type[i].1, ty
-                        );
                         if !the_true_type[i].1.equal_type(ty, self) {
                             return false;
                         }
@@ -454,12 +478,12 @@ impl<'a> SemanticAnalysis<'a> {
         return false;
     }
 
-    fn get_type_of_struct<'b, T: AsRef<str>>(
+    fn get_type_of_struct<'b>(
         &mut self,
-        key: &'b T,
-        record: &'b Vec<(String, Rc<Type>)>,
+        key: StringId,
+        record: &'b Vec<(StringId, Rc<Type>)>,
     ) -> Option<&'b Rc<Type>> {
-        let key = key.as_ref();
+        // let key = key.as_ref();
         for pair in record {
             if pair.0 == key {
                 return Some(&pair.1);
@@ -507,7 +531,10 @@ impl<'a> SemanticAnalysis<'a> {
                 assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
                 Ok(ExpressionType::new(
                     None,
-                    self.types.get(&"int".to_string()).unwrap().clone(),
+                    self.types
+                        .get(&StringInternal::add_string("int"))
+                        .unwrap()
+                        .clone(),
                 ))
             }
 
@@ -523,7 +550,7 @@ impl<'a> SemanticAnalysis<'a> {
                 assert_type!(translation_left.exp_type, &translation_right.exp_type, self);
                 assert_type!(
                     translation_left.exp_type,
-                    &self.types.get(&"int".to_string()).unwrap(),
+                    &self.types.get(&StringInternal::add_string("int")).unwrap(),
                     self
                 );
                 Ok(ExpressionType::new(None, translation_left.exp_type))
@@ -560,7 +587,7 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::String(_) => {
                 let string = self
                     .types
-                    .get(&"string".to_string())
+                    .get(&StringInternal::add_string("string"))
                     .expect("string type must be defined");
                 Ok(ExpressionType::new(None, string.clone()))
             }
@@ -572,7 +599,7 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::Number(_) => {
                 let int = self
                     .types
-                    .get(&"int".to_string())
+                    .get(&StringInternal::add_string("int"))
                     .expect("Integer type must be defined");
                 Ok(ExpressionType::new(None, int.clone()))
             }
@@ -674,10 +701,8 @@ impl<'a> SemanticAnalysis<'a> {
                 // Declare parameters
                 for (idx, parameter) in parameters.iter().enumerate() {
                     if let Expression::Id(var) = &parameter.node {
-                        self.variables.add(
-                            var.to_string(),
-                            Entry::new_variable(&types_transformed[idx]),
-                        );
+                        self.variables
+                            .add(*var, Entry::new_variable(&types_transformed[idx]));
                     }
                 }
                 let return_type_from_block = self.block(block)?;
@@ -713,10 +738,10 @@ impl<'a> SemanticAnalysis<'a> {
             Expression::TypeInit(type_name, pairs) => {
                 let type_to_check = self.types.get(type_name).ok_or("unknown type")?.clone();
                 if let Type::Record(type_struct) = type_to_check.as_ref() {
-                    let mut pair_types: Vec<(String, Rc<Type>)> = vec![];
+                    let mut pair_types: Vec<(StringId, Rc<Type>)> = vec![];
                     for pair in pairs {
                         let ty = self.translation_expression(&mut pair.1.node)?;
-                        let true_type = self.get_type_of_struct(&pair.0, type_struct);
+                        let true_type = self.get_type_of_struct(pair.0, type_struct);
                         if true_type.is_none() {
                             return Err(format!(
                                 "unknown type in struct {}, `{}`",
@@ -730,7 +755,7 @@ impl<'a> SemanticAnalysis<'a> {
                                 true_type, ty.exp_type
                             ));
                         }
-                        pair_types.push((pair.0.clone(), ty.exp_type));
+                        pair_types.push((pair.0, ty.exp_type));
                     }
                     let struct_type = Type::Record(pair_types);
                     if !self.structs_are_equal(&type_to_check, &struct_type) {
@@ -786,7 +811,7 @@ impl<'a> SemanticAnalysis<'a> {
                 if let Type::Array(inner) = possible_array.exp_type.as_ref() {
                     assert_type!(
                         index.exp_type,
-                        self.types.get(&"int".to_string()).unwrap(),
+                        self.types.get(&StringInternal::add_string("int")).unwrap(),
                         self
                     );
                     Ok(ExpressionType::new(None, self.actual_type(inner)))
@@ -824,12 +849,12 @@ impl<'a> SemanticAnalysis<'a> {
         if let Type::Record(types) = possible_struct.exp_type.as_ref() {
             let str = if let Expression::PropertyAccess(left, _) = &right.node {
                 if let Expression::Id(s) = &left.node {
-                    s.to_string()
+                    *s
                 } else {
                     unreachable!()
                 }
             } else if let Expression::Id(s) = &right.node {
-                s.to_string()
+                *s
             } else {
                 unreachable!();
             };

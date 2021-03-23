@@ -1,13 +1,15 @@
 use std::borrow::Cow;
 
-#[derive(Debug, PartialEq, Clone)]
+use crate::string_interning::{StringId, StringInternal};
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenType {
     NotEqual,
     Equal,
-    Illegal(String),
+    Illegal(StringId),
     EOF,
-    Ident(Cow<'static, str>),
-    Quotes(Cow<'static, str>),
+    Ident(StringId),
+    Quotes(StringId),
     Assign,
     Plus,
     Comma,
@@ -46,7 +48,6 @@ pub struct Token {
     pub token_type: TokenType,
     pub string: String,
 }
-
 impl std::fmt::Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -55,9 +56,9 @@ impl std::fmt::Display for TokenType {
             TokenType::RBracket => write!(f, "]"),
             TokenType::LParen => write!(f, "("),
             TokenType::RParen => write!(f, ")"),
-            TokenType::Ident(s) => write!(f, "{}", s),
-            TokenType::Quotes(s) => write!(f, "{}", s),
-            TokenType::Illegal(s) => write!(f, "{}", s),
+            TokenType::Ident(s) => write!(f, "{}", StringInternal::get_id(*s)),
+            TokenType::Quotes(s) => write!(f, "{}", StringInternal::get_id(*s)),
+            TokenType::Illegal(s) => write!(f, "{}", StringInternal::get_id(*s)),
             TokenType::Assign => write!(f, "="),
             TokenType::Plus => write!(f, "+"),
             TokenType::LBrace => write!(f, "{{"),
@@ -90,7 +91,6 @@ impl std::fmt::Display for TokenType {
         }
     }
 }
-
 mod test {
     #![allow(unused_imports)]
     use super::{Token, TokenType};

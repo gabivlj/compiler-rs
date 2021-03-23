@@ -4,6 +4,7 @@ use std::unimplemented;
 
 use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
 use crate::lexer::Lexer;
+use crate::string_interning::{StringId, StringInternal};
 use crate::token::TokenType;
 use expressions::Precedence;
 
@@ -49,18 +50,23 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    // pairs ::= [<identifier> ':' <identifier> [';']+ ]+
+    // pairs ::= [<identifier> ':' <type> [';']+ ]+
     // consumes the last brace
-    fn parse_record_pairs(&mut self) -> Result<Vec<(String, TypeExpr)>, String> {
+    fn parse_record_pairs(&mut self) -> Result<Vec<(StringId, TypeExpr)>, String> {
         let mut pairs = Vec::new();
         while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
             let identifier = self.next_token();
             self.expect_current(&TokenType::DoubleDot)?;
             self.next_token();
             let t = self.parse_type_notation()?;
-            pairs.push((identifier.to_string(), t));
-            self.expect_current(&TokenType::Semicolon)?;
-            self.skip_semicolons();
+            if let TokenType::Ident(s) = identifier {
+                pairs.push((s, t));
+                self.expect_current(&TokenType::Semicolon)?;
+                self.skip_semicolons();
+            } else {
+                return Err(format!("expected identifier, got a {}", identifier));
+            }
+
             // if let TokenType::Ident(identifier_string_left) = &identifier {
             //     if let TokenType::Ident(identifier_string_right) = &type_identifier {
             //         pairs.push((
@@ -96,7 +102,7 @@ impl<'a> Parser<'a> {
             let expression_type = self.parse_type_expression()?;
             self.skip_semicolons();
             Ok(NodeToken::new(
-                Statement::Type(identifier.to_string(), expression_type),
+                Statement::Type(identifier, expression_type),
                 type_token,
             ))
         } else {
@@ -186,7 +192,7 @@ impl<'a> Parser<'a> {
     fn parse_type_notation(&mut self) -> Result<TypeExpr, String> {
         let type_token = self.next_token();
         let type_to_return = match type_token {
-            TokenType::Ident(s) => Ok(TypeExpr::Variable(s.to_string())),
+            TokenType::Ident(s) => Ok(TypeExpr::Variable(s)),
             TokenType::LBracket => {
                 let result = self.parse_type_notation()?;
                 let is_bracket = self.expect_current(&TokenType::RBracket);
@@ -302,6 +308,7 @@ mod test {
     use crate::ast::node::{Expression, NodeToken, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::string_interning::StringInternal;
     use crate::token::TokenType;
     use core::panic;
 
@@ -432,7 +439,7 @@ mod test {
             } else {
                 panic!("not a let statement");
             };
-            assert_eq!(&identifier_expr, test);
+            assert_eq!(*identifier_expr, StringInternal::add_string(test));
         }
     }
 

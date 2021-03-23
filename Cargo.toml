@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 smallvec = "1.6.1"
-
+lazy_static = "1.4.0"
 
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::token::TokenType;
+use crate::{string_interning::StringInternal, token::TokenType};
 use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
@@ -45,7 +45,7 @@ impl<'a> Lexer<'a> {
             "for" => TokenType::For,
             // "struct" => TokenType::Struct,
             "type" => TokenType::Type,
-            _ => TokenType::Ident(Cow::Borrowed(string)),
+            _ => TokenType::Ident(StringInternal::add_string(string)),
         }
     }
 
@@ -113,9 +113,11 @@ impl<'a> Lexer<'a> {
             '"' => {
                 let quotes = self.read_quotes();
                 if let Some(quotes) = quotes {
-                    TokenType::Quotes(Cow::Borrowed(quotes))
+                    TokenType::Quotes(StringInternal::add_string(quotes))
                 } else {
-                    TokenType::Illegal("expected a \" when declaring a string".to_string())
+                    TokenType::Illegal(StringInternal::add_string(
+                        "expected a \" when declaring a string",
+                    ))
                 }
             }
             '&' => match self.peek_possible_two_len('&') {
@@ -125,7 +127,10 @@ impl<'a> Lexer<'a> {
                 }
                 None => {
                     self.next();
-                    TokenType::Illegal(format!("expected a '&', got {}", self.char()))
+                    TokenType::Illegal(StringInternal::add_string(format!(
+                        "expected a '&', got {}",
+                        self.char()
+                    )))
                 }
             },
             '|' => match self.peek_possible_two_len('|') {
@@ -135,7 +140,10 @@ impl<'a> Lexer<'a> {
                 }
                 None => {
                     self.next();
-                    TokenType::Illegal(format!("expected a '|', got {}", self.char()))
+                    TokenType::Illegal(StringInternal::add_string(format!(
+                        "expected a '|', got {}",
+                        self.char()
+                    )))
                 }
             },
             '[' => TokenType::LBracket,
@@ -188,7 +196,7 @@ impl<'a> Lexer<'a> {
                         // validate integer
                         let valid_integer = string.parse::<u64>();
                         if valid_integer.is_err() {
-                            return TokenType::Illegal(string.to_string());
+                            return TokenType::Illegal(StringInternal::add_string(string));
                         }
                         TokenType::Int(valid_integer.unwrap())
                     }
@@ -206,6 +214,7 @@ mod test {
     #![allow(dead_code)]
     #![allow(unused_imports)]
     use crate::lexer::Lexer;
+    use crate::string_interning::*;
     use crate::token::{Token, TokenType};
     use std::borrow::Cow;
     #[test]
@@ -262,39 +271,42 @@ mod test {
 
         let tests = vec![
             (TokenType::Let, "let"),
-            (TokenType::Ident(Cow::Borrowed("five")), "five"),
+            (TokenType::Ident(StringInternal::add_string("five")), "five"),
             (TokenType::Assign, "="),
             (TokenType::Int(5), "5"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident(Cow::Borrowed("ten")), "ten"),
+            (TokenType::Ident(StringInternal::add_string("ten")), "ten"),
             (TokenType::Assign, "="),
             (TokenType::Int(10), "10"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident(Cow::Borrowed("add")), "add"),
+            (TokenType::Ident(StringInternal::add_string("add")), "add"),
             (TokenType::Assign, "="),
             (TokenType::Function, "fn"),
             (TokenType::LParen, "("),
-            (TokenType::Ident(Cow::Borrowed("x")), "x"),
+            (TokenType::Ident(StringInternal::add_string("x")), "x"),
             (TokenType::Comma, ","),
-            (TokenType::Ident(Cow::Borrowed("y")), "y"),
+            (TokenType::Ident(StringInternal::add_string("y")), "y"),
             (TokenType::RParen, ")"),
             (TokenType::LBrace, "{"),
-            (TokenType::Ident(Cow::Borrowed("x")), "x"),
+            (TokenType::Ident(StringInternal::add_string("x")), "x"),
             (TokenType::Plus, "+"),
-            (TokenType::Ident(Cow::Borrowed("y")), "y"),
+            (TokenType::Ident(StringInternal::add_string("y")), "y"),
             (TokenType::Semicolon, ";"),
             (TokenType::RBrace, "}"),
             (TokenType::Semicolon, ";"),
             (TokenType::Let, "let"),
-            (TokenType::Ident(Cow::Borrowed("result")), "result"),
+            (
+                TokenType::Ident(StringInternal::add_string("result")),
+                "result",
+            ),
             (TokenType::Assign, "="),
-            (TokenType::Ident(Cow::Borrowed("add")), "add"),
+            (TokenType::Ident(StringInternal::add_string("add")), "add"),
             (TokenType::LParen, "("),
-            (TokenType::Ident(Cow::Borrowed("five")), "five"),
+            (TokenType::Ident(StringInternal::add_string("five")), "five"),
             (TokenType::Comma, ","),
-            (TokenType::Ident(Cow::Borrowed("ten")), "ten"),
+            (TokenType::Ident(StringInternal::add_string("ten")), "ten"),
             (TokenType::RParen, ")"),
             (TokenType::Semicolon, ";"),
             (TokenType::Bang, "!"),
@@ -338,6 +350,11 @@ mod test {
         for (ii, test) in tests.iter().enumerate() {
             let tok = lexer.next_token();
             if tok != test.0 {
+                if let TokenType::Ident(s) = tok {
+                    if let TokenType::Ident(s2) = test.0 {
+                        panic!("tests[{}] - tokentype `{}` wrong. expected={}", ii, s, s2);
+                    }
+                }
                 panic!(
                     "tests[{}] - tokentype `{:?}` wrong. expected={:?}",
                     ii, tok, test.0

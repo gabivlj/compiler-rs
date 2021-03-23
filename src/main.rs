@@ -1,10 +1,12 @@
 #![feature(maybe_uninit_uninit_array)]
-
+#[macro_use]
+extern crate lazy_static;
 pub mod ast;
 pub mod hash_undo;
 pub mod lexer;
 pub mod parser;
 pub mod semantic;
+pub mod string_interning;
 pub mod token;
 
 #[cfg(not(target_env = "msvc"))]
@@ -33,7 +35,7 @@ fn main() {
 "
     .repeat(1000);
     let elapsed = std::time::Instant::now();
-    for _ in 0..100 {
+    for _ in 0..10 {
         let l = Lexer::new(&s);
         let p = Parser::new(l).parse_program();
         p.unwrap();

@@ -1,4 +1,7 @@
-use crate::token::TokenType;
+use crate::{
+    string_interning::{StringId, StringInternal},
+    token::TokenType,
+};
 use std::{boxed::Box, unimplemented};
 
 #[derive(Debug, Clone)]
@@ -26,7 +29,7 @@ pub enum Expression {
 
     /// Id is an identifier
     /// `let f = 0;` would create an identifier called f
-    Id(Cow<'static, str>),
+    Id(StringId),
 
     BinaryOp(
         Box<NodeToken<Expression>>,
@@ -65,21 +68,21 @@ pub enum Expression {
 
     Boolean(bool),
 
-    String(String),
+    String(StringId),
 
     IndexAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 
-    TypeInit(String, Vec<(String, NodeToken<Expression>)>),
+    TypeInit(StringId, Vec<(StringId, NodeToken<Expression>)>),
 
     PropertyAccess(Box<NodeToken<Expression>>, Box<NodeToken<Expression>>),
 }
 
 #[derive(Clone, Debug)]
 pub enum TypeExpr {
-    Variable(String),
+    Variable(StringId),
     Array(Box<TypeExpr>),
     Function(Vec<TypeExpr>, Option<Box<TypeExpr>>),
-    Struct(Vec<(String, TypeExpr)>),
+    Struct(Vec<(StringId, TypeExpr)>),
 }
 
 use std::fmt;
@@ -110,14 +113,14 @@ impl std::fmt::Display for TypeExpr {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    Type(String, TypeExpr),
+    Type(StringId, TypeExpr),
 
     /// While contains the conditional expr that keeps the loop going and
     /// the block of code
     While(Box<NodeToken<Expression>>, Vec<NodeToken<Statement>>),
 
     /// Var contains the variable name and the expression value that is assigned to and the type
-    Var(Cow<'static, str>, Box<NodeToken<Expression>>, TypeExpr),
+    Var(StringId, Box<NodeToken<Expression>>, TypeExpr),
 
     /// Return represents a return statement
     Return(Box<NodeToken<Expression>>),
@@ -396,6 +399,7 @@ impl From<&TokenType> for OpType {
 mod test {
     #[allow(unused_imports)]
     use crate::ast::node::{Expression, NodeToken, Statement, TypeExpr};
+    use crate::string_interning::{StringId, StringInternal};
     #[allow(unused_imports)]
     use crate::token::{Token, TokenType};
     #[allow(unused_imports)]
@@ -404,16 +408,16 @@ mod test {
     fn check_string() {
         let program = Statement::Program(vec![NodeToken::new(
             Statement::Var(
-                Cow::Borrowed("myVar"),
+                StringInternal::add_string("myVar"),
                 NodeToken::new_boxed(
-                    Expression::Id(Cow::Borrowed("anotherVar")),
-                    TokenType::Ident(Cow::Borrowed("anotherVar")),
+                    Expression::Id(StringInternal::add_string("anotherVariable")),
+                    TokenType::Ident(StringInternal::add_string("anotherVariable")),
                 ),
-                TypeExpr::Variable("int".to_string()),
+                TypeExpr::Variable(StringInternal::add_string("int")),
             ),
             TokenType::Let,
         )]);
-        if program.string(&TokenType::EOF) != "let myVar: int = anotherVar;" {
+        if program.string(&TokenType::EOF) != "let myVar: int = anotherVariable;" {
             panic!(
                 "program to string wrong. got={}",
                 program.string(&TokenType::EOF)

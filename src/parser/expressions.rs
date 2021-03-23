@@ -2,6 +2,7 @@ use std::unimplemented;
 
 use crate::ast::node::{Expression, NodeToken, OpType, Statement, TypeExpr};
 use crate::parser::Parser;
+use crate::string_interning::{StringId, StringInternal};
 use crate::token::TokenType;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
@@ -77,17 +78,13 @@ impl<'a> Parser<'a> {
     fn parse_string(&mut self) -> Result<NodeToken<Expression>, String> {
         let identifier = self.next_token();
         if let TokenType::Quotes(ident) = &identifier {
-            return Ok(NodeToken::new(
-                Expression::String(ident.to_string()),
-                identifier,
-            ));
+            return Ok(NodeToken::new(Expression::String(*ident), identifier));
         }
         return Err(format!("expected normal string"));
     }
 
     /// parses a prefix expression depending on the current token type
     fn prefix_expression(&mut self) -> Result<NodeToken<Expression>, String> {
-        // println!("{:?} -> {:?}", self.current_token, self.peek_token);
         if self.can_assign {
             if let TokenType::Ident(_) = &self.current_token {
             } else {
@@ -153,7 +150,7 @@ impl<'a> Parser<'a> {
             self.next_token();
             self.parse_type_notation()
         } else {
-            Ok(TypeExpr::Variable("void".to_string()))
+            Ok(TypeExpr::Variable(StringInternal::add_string("void")))
         }?;
         let block = self.parse_block_statement()?;
         let func = Expression::FunctionDefinition {
@@ -215,21 +212,17 @@ impl<'a> Parser<'a> {
     }
 
     /// key_pairs ::=  [<identifier> '=' <expression>] [',' <identifier> '=' <expression>]* '}'
-    fn parse_key_pairs(&mut self) -> Result<Vec<(String, NodeToken<Expression>)>, String> {
+    fn parse_key_pairs(&mut self) -> Result<Vec<(StringId, NodeToken<Expression>)>, String> {
         let mut vec_pairs = vec![];
         while !self.is_current(&TokenType::RBrace) && !self.is_current(&TokenType::EOF) {
             if vec_pairs.len() >= 1 {
-                println!("{:?}", vec_pairs);
                 self.expect_current(&TokenType::Comma)?;
                 self.next_token();
             }
             if let TokenType::Ident(identifier) = self.next_token() {
                 self.expect_current(&TokenType::Assign)?;
                 self.next_token();
-                vec_pairs.push((
-                    identifier.to_string(),
-                    self.parse_expression(Precedence::Lowest)?,
-                ));
+                vec_pairs.push((identifier, self.parse_expression(Precedence::Lowest)?));
             } else {
                 return Err(format!("expected identifier on key expression"));
             }
@@ -245,7 +238,7 @@ impl<'a> Parser<'a> {
         left: NodeToken<Expression>,
     ) -> Result<NodeToken<Expression>, String> {
         if let Expression::Id(type_id) = &left.node {
-            let id = type_id.to_string();
+            let id = *type_id;
             let arrow = self.next_token();
             self.expect_current(&TokenType::LBrace)?;
             self.next_token();
@@ -381,7 +374,6 @@ impl<'a> Parser<'a> {
         self.can_assign = true;
         let exp = self.parse_expression(Precedence::Lowest)?;
         self.can_assign = prev_assign;
-        println!("{}", exp.node.string());
         self.expect_current(&TokenType::RParen)?;
         self.next_token();
         Ok(exp)
@@ -431,6 +423,7 @@ mod test {
     use crate::ast::node::{Expression, NodeToken, OpType, Statement, Str};
     use crate::lexer::Lexer;
     use crate::parser::Parser;
+    use crate::string_interning::{StringId, StringInternal};
     use crate::token::TokenType;
 
     #[test]
@@ -599,7 +592,7 @@ mod test {
         } else {
             panic!("not an identifier");
         };
-        assert_eq!(&id, "variable");
+        assert_eq!(StringInternal::get_id(id), "variable");
         assert_eq!(format!("{}", token), "variable");
     }
 
@@ -744,6 +737,7 @@ mod test {
             assert_eq!(&str, test.1);
         }
     }
+
     #[test]
     fn test_parse_boolean() {
         let input = [("true", true), ("false;", false)];
